@@ -1,0 +1,28 @@
+{
+    "servers": {
+        "my-mcp-server-vcore": {
+            "type": "stdio",
+            "command": "uv",
+            "args": [
+                "run",
+                "--with",
+                "mcp[cli],pymongo>=4.12.0",
+                "mcp",
+                "run",
+                "your_script_path"
+            ],
+            "env": {
+                // DocumentDB connection settings:
+                // - DOCUMENTDB_URI: The connection string to your DocumentDB instance
+                // - DB_NAME: The name of the database to connect to
+                // Note: These values should be updated with your actual database credentials
+                "DOCUMENTDB_URI": "your_connection_string",
+                "DB_NAME": "your_db_name",
+                // MCP server settings (required when using sse transport type: "sse"):
+                // - TRANSPORT: The transport for the MCP server - either 'sse' or 'stdio' (defaults to SSE if left empty)
+                // - HOST: Host to bind to if using sse as the transport (leave empty if using stdio)
+                // - PORT: Port to listen on if using sse as the transport (leave empty if using stdio)
+            }
+        }
+    }
+}
