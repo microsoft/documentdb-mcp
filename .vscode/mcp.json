@@ -1,6 +1,6 @@
 {
     "servers": {
-        "my-mcp-server-vcore": {
+        "DocumentDB": {
             "type": "stdio",
             "command": "uv",
             "args": [
