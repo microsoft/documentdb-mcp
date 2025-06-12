@@ -72,6 +72,22 @@ Note: Ensure you replace `your_documentdb_uri`, `your_database_name` with your a
 
 ### Using uv
 
+Install uv:
+```bash
+pip install uv
+```
+
+Install the package in development mode:
+```bash
+uv venv
+uv pip install -e .
+```
+
+Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your DocumentDB configuration
+```
 #### SSE Transport
 
 ```bash
