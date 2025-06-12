@@ -1,6 +1,6 @@
 {
     "servers": {
-        "DocumentDB": {
+        "DocumentDB_stdio": {
             "type": "stdio",
             "command": "uv",
             "args": [
@@ -18,11 +18,11 @@
                 // Note: These values should be updated with your actual database credentials
                 "DOCUMENTDB_URI": "your_connection_string",
                 "DB_NAME": "your_db_name",
-                // MCP server settings (required when using sse transport type: "sse"):
-                // - TRANSPORT: The transport for the MCP server - either 'sse' or 'stdio' (defaults to SSE if left empty)
-                // - HOST: Host to bind to if using sse as the transport (leave empty if using stdio)
-                // - PORT: Port to listen on if using sse as the transport (leave empty if using stdio)
             }
+        },
+            "DocumentDB_sse": {
+            "type": "sse",
+            "url": "http://localhost:8070/sse",
         }
     }
 }
