@@ -68,24 +68,32 @@ DB_NAME=your_database_name
 
 Note: Ensure you replace `your_documentdb_uri`, `your_database_name` with your actual DocumentDB connection string and desired database name.
 
-## Installation for Local Setup
+## Running the MCP Server
 
-1. Install uv:
-```bash
-pip install uv
-```
+### Using uv
 
-2. Install the package in development mode:
-```bash
-uv venv
-uv pip install -e .
-```
+#### SSE Transport
 
-3. Set up environment variables:
 ```bash
-cp .env.example .env
-# Edit .env with your DocumentDB configuration
+# Set TRANSPORT=sse in .env then:
+uv run src/documentdb_mcp.py
 ```
+The MCP server will essentially be run as an API endpoint that you can then connect to with config shown below.
+
+#### Stdio Transport
+With stdio, the MCP client itself can spin up the MCP server, so nothing to run at this point.
+
+### Using Docker
+
+#### SSE Transport
+```bash
+docker run --env-file .env -p 8070:8070 documentdb-mcp
+```
+The MCP server will essentially be run as an API endpoint within the container that you can then connect to with config shown below.
+
+#### Stdio Transport
+With stdio, the MCP client itself can spin up the MCP server container, so nothing to run at this point.
+
 ## Contributing
 
 This project welcomes contributions and suggestions. Most contributions require you to agree to a Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us the rights to use your contribution. For details, visit https://cla.opensource.microsoft.com.
