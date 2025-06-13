@@ -1,63 +1,40 @@
 from mcp.server.fastmcp import FastMCP, Context
-from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from dotenv import load_dotenv
-from pymongo import MongoClient
-import asyncio
-import os
+from src.documentdb_mcp.mcp_config import HOST, PORT
+from src.documentdb_mcp.context_manager import documentdb_lifespan
+from src.documentdb_mcp.models import DBInfoResponse, DocumentQueryResponse, InsertResponse, UpdateResponse, DeleteResponse, AggregateResponse, CreateIndexResponse, ListIndexesResponse, ErrorResponse
 from typing import Optional, Dict, Any, List
-import json
-
-load_dotenv()
-
-# Database configuration
-DOCUMENTDB_URI = os.getenv("DOCUMENTDB_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("DB_NAME", "database")
-
-@dataclass
-class DocumentDBContext:
-    """Context for the DocumentDB MCP server."""
-    db: MongoClient
-
-@asynccontextmanager
-async def documentdb_lifespan(server: FastMCP) -> AsyncIterator[DocumentDBContext]:
-    """Manages the DocumentDB client lifecycle."""
-    try:
-        client = MongoClient(DOCUMENTDB_URI)
-        db = client[DB_NAME]
-        yield DocumentDBContext(db=db)
-    finally:
-        client.close()
 
 mcp = FastMCP(
     "documentdb-mcp",
     description="MCP server for DocumentDB database operations",
     lifespan=documentdb_lifespan,
-    host=os.getenv("HOST", "0.0.0.0"),
-    port=os.getenv("PORT", "8050")
+    host=HOST,
+    port=PORT
 )
 
 @mcp.tool()
-async def get_db_info(ctx: Context) -> Dict[str, Any]:
+async def get_db_info(ctx: Context) -> DBInfoResponse:
     """Get database information including name and collection names."""
     try:
         db = ctx.request_context.lifespan_context.db
-        return {
-            "database_name": db.name,
-            "collection_names": db.list_collection_names(),
-            "stats": {
-                "collections": len(db.list_collection_names()),
-            "estimated total count": sum(db[collection_name].estimated_document_count() 
-                                 for collection_name in db.list_collection_names())
-            }
+        stats = {
+            "collections": len(db.list_collection_names()),
+            "estimated_total_count": sum(
+                db[collection_name].estimated_document_count() 
+                for collection_name in db.list_collection_names()
+            )
         }
+        return DBInfoResponse(
+            database_name=db.name,
+            collection_names=db.list_collection_names(),
+            stats=stats
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
 async def find_documents(ctx: Context, collection_name: str, query: Dict = {}, 
-                        limit: int = 100, skip: int = 0) -> Dict[str, Any]:
+                        limit: int = 100, skip: int = 0) -> DocumentQueryResponse:
     """
     Find documents in a collection using a query.
     
@@ -71,25 +48,22 @@ async def find_documents(ctx: Context, collection_name: str, query: Dict = {},
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
         
-        # Execute query with pagination
         cursor = collection.find(query).skip(skip).limit(limit)
         documents = list(cursor)
-        
-        # Get total count for pagination using estimated count
         total_count = collection.estimated_document_count() if not query else collection.count_documents(query)
         
-        return {
-            "documents": documents,
-            "total_count": total_count,
-            "limit": limit,
-            "skip": skip,
-            "has_more": (skip + len(documents)) < total_count
-        }
+        return DocumentQueryResponse(
+            documents=documents,
+            total_count=total_count,
+            limit=limit,
+            skip=skip,
+            has_more=(skip + len(documents)) < total_count
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def insert_document(ctx: Context, collection_name: str, document: Dict) -> Dict:
+async def insert_document(ctx: Context, collection_name: str, document: Dict) -> InsertResponse:
     """
     Insert a single document into a collection.
     
@@ -101,16 +75,16 @@ async def insert_document(ctx: Context, collection_name: str, document: Dict) ->
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
         result = collection.insert_one(document)
-        return {
-            "inserted_id": str(result.inserted_id),
-            "acknowledged": result.acknowledged,
-            "inserted_count": 1
-        }
+        return InsertResponse(
+            inserted_id=str(result.inserted_id),
+            acknowledged=result.acknowledged,
+            inserted_count=1
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def insert_many(ctx: Context, collection_name: str, documents: List[Dict]) -> Dict:
+async def insert_many(ctx: Context, collection_name: str, documents: List[Dict]) -> InsertResponse:
     """
     Insert multiple documents into a collection.
     
@@ -122,17 +96,17 @@ async def insert_many(ctx: Context, collection_name: str, documents: List[Dict])
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
         result = collection.insert_many(documents)
-        return {
-            "inserted_ids": [str(id) for id in result.inserted_ids],
-            "acknowledged": result.acknowledged,
-            "inserted_count": len(result.inserted_ids)
-        }
+        return InsertResponse(
+            inserted_ids=[str(id) for id in result.inserted_ids],
+            acknowledged=result.acknowledged,
+            inserted_count=len(result.inserted_ids)
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
 async def update_document(ctx: Context, collection_name: str, filter: Dict, 
-                         update: Dict, upsert: bool = False) -> Dict:
+                         update: Dict, upsert: bool = False) -> UpdateResponse:
     """
     Update a document in a collection.
     
@@ -146,17 +120,17 @@ async def update_document(ctx: Context, collection_name: str, filter: Dict,
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
         result = collection.update_one(filter, update, upsert=upsert)
-        return {
-            "matched_count": result.matched_count,
-            "modified_count": result.modified_count,
-            "upserted_id": str(result.upserted_id) if result.upserted_id else None,
-            "acknowledged": result.acknowledged
-        }
+        return UpdateResponse(
+            matched_count=result.matched_count,
+            modified_count=result.modified_count,
+            upserted_id=str(result.upserted_id) if result.upserted_id else None,
+            acknowledged=result.acknowledged
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def delete_document(ctx: Context, collection_name: str, filter: Dict) -> Dict:
+async def delete_document(ctx: Context, collection_name: str, filter: Dict) -> DeleteResponse:
     """
     Delete a document from a collection.
     
@@ -168,16 +142,16 @@ async def delete_document(ctx: Context, collection_name: str, filter: Dict) -> D
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
         result = collection.delete_one(filter)
-        return {
-            "deleted_count": result.deleted_count,
-            "acknowledged": result.acknowledged
-        }
+        return DeleteResponse(
+            deleted_count=result.deleted_count,
+            acknowledged=result.acknowledged
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
 async def aggregate(ctx: Context, collection_name: str, pipeline: List[Dict], 
-                   allow_disk_use: bool = False) -> Dict[str, Any]:
+                   allow_disk_use: bool = False) -> AggregateResponse:
     """
     Run an aggregation pipeline on a collection.
     
@@ -189,19 +163,13 @@ async def aggregate(ctx: Context, collection_name: str, pipeline: List[Dict],
     try:
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
-        
-        # Execute aggregation with optional disk use
-        results = list(collection.aggregate(
-            pipeline,
-            allowDiskUse=allow_disk_use
-        ))
-        
-        return {
-            "results": results,
-            "count": len(results)
-        }
+        results = list(collection.aggregate(pipeline, allowDiskUse=allow_disk_use))
+        return AggregateResponse(
+            results=results,
+            total_count=len(results)
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
 async def create_index(ctx: Context, collection_name: str, keys: Dict, 
@@ -225,13 +193,13 @@ async def create_index(ctx: Context, collection_name: str, keys: Dict,
             name=name
         )
         
-        return {
-            "index_name": index_name,
-            "keys": keys,
-            "unique": unique
-        }
+        return CreateIndexResponse(
+            index_name=index_name,
+            keys=keys,
+            unique=unique
+        )
     except Exception as e:
-        return {"error": str(e)}
+        return ErrorResponse(error=str(e))
 
 @mcp.tool()
 async def list_indexes(ctx: Context, collection_name: str) -> List[Dict]:
@@ -244,16 +212,7 @@ async def list_indexes(ctx: Context, collection_name: str) -> List[Dict]:
     try:
         db = ctx.request_context.lifespan_context.db
         collection = db[collection_name]
-        return list(collection.list_indexes())
+        indexes = list(collection.list_indexes())
+        return ListIndexesResponse(indexes=indexes)
     except Exception as e:
-        return [{"error": str(e)}]
-
-async def main():
-    transport = os.getenv("TRANSPORT", "sse")
-    if transport == 'sse':
-        await mcp.run_sse_async()
-    else:
-        await mcp.run_stdio_async()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        return ErrorResponse(error=str(e))

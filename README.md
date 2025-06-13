@@ -88,10 +88,10 @@ Set up environment variables:
 cp .env.example .env
 # Edit .env with your DocumentDB configuration
 ```
-#### SSE Transport
+#### Streamable HTTP and SSE Transport
 
 ```bash
-# Set TRANSPORT=sse in .env then:
+# Set TRANSPORT=streamable-http or sse in .env then:
 uv run src/documentdb_mcp.py
 ```
 The MCP server will essentially be run as an API endpoint that you can then connect to with config shown below.
