@@ -5,7 +5,7 @@ from pymongo import MongoClient
 @dataclass
 class DocumentDBContext:
     """Context for the DocumentDB MCP server."""
-    db: MongoClient
+    client: MongoClient
 
 @dataclass
 class DBInfoResponse:

@@ -11,8 +11,10 @@ async def main():
         await mcp.run_sse_async()
     elif transport == 'stdio':
         await mcp.run_stdio_async()
-    else:
+    elif transport == 'streamable-http':
         await mcp.run_streamable_http_async()
+    else:
+        raise ValueError(f"Invalid transport: {transport}")
 
 if __name__ == "__main__":
     asyncio.run(main())

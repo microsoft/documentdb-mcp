@@ -13,10 +13,24 @@ mcp = FastMCP(
 )
 
 @mcp.tool()
-async def get_db_info(ctx: Context) -> DBInfoResponse:
-    """Get database information including name and collection names."""
+async def list_databases(ctx: Context) -> List[str]:
+    """List all databases in the DocumentDB instance."""
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        return client.list_database_names()
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def get_db_info(ctx: Context, db_name: str) -> DBInfoResponse:
+    """Get database information including name and collection names.
+    
+    Args:
+        db_name: Name of the database
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         stats = {
             "collections": len(db.list_collection_names()),
             "estimated_total_count": sum(
@@ -33,19 +47,21 @@ async def get_db_info(ctx: Context) -> DBInfoResponse:
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def find_documents(ctx: Context, collection_name: str, query: Dict = {}, 
+async def find_documents(ctx: Context, db_name: str, collection_name: str, query: Dict = {}, 
                         limit: int = 100, skip: int = 0) -> DocumentQueryResponse:
     """
     Find documents in a collection using a query.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection to query
         query: Query filter (MongoDB style)
         limit: Maximum number of documents to return
         skip: Number of documents to skip
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         
         cursor = collection.find(query).skip(skip).limit(limit)
@@ -63,16 +79,18 @@ async def find_documents(ctx: Context, collection_name: str, query: Dict = {},
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def insert_document(ctx: Context, collection_name: str, document: Dict) -> InsertResponse:
+async def insert_document(ctx: Context, db_name: str, collection_name: str, document: Dict) -> InsertResponse:
     """
     Insert a single document into a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
         document: Document to insert
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         result = collection.insert_one(document)
         return InsertResponse(
@@ -84,16 +102,18 @@ async def insert_document(ctx: Context, collection_name: str, document: Dict) ->
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def insert_many(ctx: Context, collection_name: str, documents: List[Dict]) -> InsertResponse:
+async def insert_many(ctx: Context, db_name: str, collection_name: str, documents: List[Dict]) -> InsertResponse:
     """
     Insert multiple documents into a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
         documents: List of documents to insert
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         result = collection.insert_many(documents)
         return InsertResponse(
@@ -105,19 +125,21 @@ async def insert_many(ctx: Context, collection_name: str, documents: List[Dict])
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def update_document(ctx: Context, collection_name: str, filter: Dict, 
+async def update_document(ctx: Context, db_name: str, collection_name: str, filter: Dict, 
                          update: Dict, upsert: bool = False) -> UpdateResponse:
     """
     Update a document in a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
         filter: Query filter to find the document
         update: Update operations ($set, $inc, etc.)
         upsert: Create document if it doesn't exist
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         result = collection.update_one(filter, update, upsert=upsert)
         return UpdateResponse(
@@ -130,16 +152,18 @@ async def update_document(ctx: Context, collection_name: str, filter: Dict,
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def delete_document(ctx: Context, collection_name: str, filter: Dict) -> DeleteResponse:
+async def delete_document(ctx: Context, db_name: str, collection_name: str, filter: Dict) -> DeleteResponse:
     """
     Delete a document from a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
         filter: Query filter to find the document
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         result = collection.delete_one(filter)
         return DeleteResponse(
@@ -150,18 +174,20 @@ async def delete_document(ctx: Context, collection_name: str, filter: Dict) -> D
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def aggregate(ctx: Context, collection_name: str, pipeline: List[Dict], 
+async def aggregate(ctx: Context, db_name: str, collection_name: str, pipeline: List[Dict], 
                    allow_disk_use: bool = False) -> AggregateResponse:
     """
     Run an aggregation pipeline on a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
         pipeline: List of aggregation stages
         allow_disk_use: Allow pipeline stages to write to disk
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         results = list(collection.aggregate(pipeline, allowDiskUse=allow_disk_use))
         return AggregateResponse(
@@ -171,20 +197,23 @@ async def aggregate(ctx: Context, collection_name: str, pipeline: List[Dict],
     except Exception as e:
         return ErrorResponse(error=str(e))
 
+
 @mcp.tool()
-async def create_index(ctx: Context, collection_name: str, keys: Dict, 
+async def create_index(ctx: Context, db_name: str, collection_name: str, keys: Dict, 
                       unique: bool = False, name: Optional[str] = None) -> Dict:
     """
     Create an index on a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
         keys: Dictionary defining the index (e.g., {'field': 1} for ascending)
         unique: Whether the index should be unique
         name: Optional name for the index
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         
         index_name = collection.create_index(
@@ -192,7 +221,7 @@ async def create_index(ctx: Context, collection_name: str, keys: Dict,
             unique=unique,
             name=name
         )
-        
+
         return CreateIndexResponse(
             index_name=index_name,
             keys=keys,
@@ -202,17 +231,70 @@ async def create_index(ctx: Context, collection_name: str, keys: Dict,
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def list_indexes(ctx: Context, collection_name: str) -> List[Dict]:
+async def list_indexes(ctx: Context, db_name: str, collection_name: str) -> List[Dict]:
     """
     List all indexes on a collection.
     
     Args:
+        db_name: Name of the database
         collection_name: Name of the collection
     """
     try:
-        db = ctx.request_context.lifespan_context.db
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
         collection = db[collection_name]
         indexes = list(collection.list_indexes())
         return ListIndexesResponse(indexes=indexes)
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def drop_index(ctx: Context, db_name: str, collection_name: str, index_name: str) -> Dict:
+    """
+    Drop an index from a collection.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        index_name: Name of the index to drop
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        collection.drop_index(index_name)
+        return {"message": "Index dropped successfully"}
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+    
+@mcp.tool()
+async def drop_collection(ctx: Context, db_name: str, collection_name: str) -> Dict:
+    """
+    Drop a collection from a database.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection to drop
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        db.drop_collection(collection_name)
+        return {"message": "Collection dropped successfully"}
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def drop_database(ctx: Context, db_name: str) -> Dict:
+    """
+    Drop a database.
+    
+    Args:
+        db_name: Name of the database to drop
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        client.drop_database(db_name)
+        return {"message": "Database dropped successfully"}
     except Exception as e:
         return ErrorResponse(error=str(e))
