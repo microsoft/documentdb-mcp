@@ -4,20 +4,130 @@ A Model Context Protocol (MCP) server implementation for DocumentDB operations, 
 
 ## Supported Operations
 
-- Connect to DocumentDB cluster
-- List collections
-- Query operations (find, aggregate)
-- Insert operations
-- Update operations
-- Delete records
+| Category | Operation | Description |
+|----------|-----------|-------------|
+| **Database Management** | `list_databases` | List all databases |
+| | `db_stats` | Get database statistics |
+| | `get_db_info` | Get database information |
+| | `drop_database` | Drop a database |
+| **Collection Management** | `collection_stats` | Get collection statistics |
+| | `rename_collection` | Rename a collection |
+| | `drop_collection` | Drop a collection |
+| **Index Management** | `create_index` | Create an index |
+| | `list_indexes` | List indexes |
+| | `drop_index` | Drop an index |
+| | `current_ops` | Monitor current operations (including index builds) |
+| **Document Operations** | `find_documents` | Find documents with pagination |
+| | `count_documents` | Count documents |
+| | `insert_document` | Insert a single document |
+| | `insert_many` | Insert multiple documents |
+| | `update_document` | Update a single document |
+| | `update_many` | Update multiple documents |
+| | `delete_document` | Delete a single document |
+| | `delete_many` | Delete multiple documents |
+| **Aggregation & Query** | `aggregate` | Run aggregation pipelines |
+| | `explain_aggregate_query` | Explain aggregation query plans |
+| | `explain_find_query` | Explain find query plans |
 
-## MCP Features
+## Onboard DocumentDB MCP Server
 
-- Supports both SSE and STDIO transport methods
+### Prerequisites
+- DocumentDB must be running with a valid connection URI
+- Refer to the [DocumentDB Setup Guide](#documentdb-setup-guide) for setup instructions
 
-## Onboard DocumentDB to the MCP Server
+### Transport Options
+- **HTTP-Stream**: Ideal for web-based applications and multi-client scenarios
+- **STDIO**: Recommended for local development and single-client use
+- **SSE**: Deprecated in favor of HTTP-Stream
 
-### DB Connection Setup Guide
+### Using Docker (Recommended)
+
+1. Copy and configure the environment file:
+```bash
+cp .env.example .env
+# Set TRANSPORT=streamable-http in .env
+# Update DocumentDB URI and other variables
+```
+
+2. Build and run the Docker container:
+```bash
+docker build -t documentdb-mcp --build-arg PORT=8070 .
+docker run --env-file .env -p 8070:8070 documentdb-mcp
+```
+The MCP server will run as an API endpoint within the container.
+Note: You can change the port number (8070) if needed, but ensure consistency between the build argument and port mapping.
+
+### Local Setup
+
+#### Prerequisites
+- Python environment
+  - uv for project management
+
+
+#### Installation
+```bash
+pip install uv
+uv venv
+uv pip install -e .
+```
+
+#### Configuration
+```bash
+cp .env.example .env
+# Edit .env with your DocumentDB configuration and transport variables
+```
+
+
+#### Running the Server
+- **Streamable HTTP**: 
+  ```bash
+# Set TRANSPORT=streamable-http or sse in .env then:
+  uv run src/documentdb_mcp.py
+  ```
+- **Stdio**: 
+  - The MCP client will automatically launch the server
+  - No manual server start required
+  - Check mcp.json for more information
+### Client Configuration
+
+#### VSCode
+```json
+{
+    "DocumentDB_stdio": {
+        "type": "stdio",
+        "command": "uv",
+        "args": [
+            "run",
+            "--with",
+            "mcp[cli]>=1.9.3,pymongo>=4.12.0,httpx>=0.28.1",
+            "mcp",
+            "run",
+            "your_script_path"
+        ],
+        "env": {
+            "DOCUMENTDB_URI": "your_connection_string",
+            "DB_NAME": "your_database_name"
+        }
+    },
+    "DocumentDB_sse": {
+            "type": "sse",
+            "url": "http://localhost:8070/sse"
+        },
+}
+```
+
+#### Important Notes
+- Copilot will automatically detect and try to onboard your MCP with one-click `start` running
+- For Streamable HTTP: Start the server first using `uv run src/documentdb_mcp.py`
+- For Stdio: VSCode will manage the server startup automatically
+- For SSE: Same as Streamable HTTP, Server must be running first (refer to the previous section for local/Docker setup)
+- Windows users: Use PowerShell for VSCode and Copilot setup to avoid connection issues.
+- For more information, refer to the VSCode official guide [here](https://code.visualstudio.com/docs/copilot/chat/chat-agent-mode).
+
+#### Claude and Windsurf
+The same configuration can be used for Claude and Windsurf.
+
+### DocumentDB Setup Guide
 To get started with DocumentDB locally, follow these steps:
 
 1. Pull the latest DocumentDB local image:
@@ -55,61 +165,37 @@ mongosh "mongodb://your_username:your_password@localhost:10260/?authMechanism=SC
 
 The connection string from Option 2 should be used as the `DOCUMENTDB_URI` environment variable.
 
-For more detailed information about the DocumentDB gateway, refer to the official documentation:
-https://github.com/microsoft/documentdb/blob/main/docs/v1/gateway.md#getting-started-with-documentdb-gateway
+For more detailed information about the DocumentDB gateway, refer to the official documentation [here](https://github.com/microsoft/documentdb/blob/main/docs/v1/gateway.md#getting-started-with-documentdb-gateway).
 
 ### Environment Variables
 
 After setting up DocumentDB, configure your `.env` file or mcp configure json with the following variables:
 ```bash
 DOCUMENTDB_URI=your_documentdb_uri
-DB_NAME=your_database_name
 ```
 
-Note: Ensure you replace `your_documentdb_uri`, `your_database_name` with your actual DocumentDB connection string and desired database name.
+Note: Ensure you replace `your_documentdb_uri` with your actual DocumentDB connection string and desired database name.
 
-## Running the MCP Server
 
-### Using uv
 
-Install uv:
+#### Debugging the MCP
+
+Use the MCP Inspector to validate the MCP server, make sure it's up and running!
+
+1. Install the inspector:
 ```bash
-pip install uv
+npx @modelcontextprotocol/inspector
 ```
 
-Install the package in development mode:
-```bash
-uv venv
-uv pip install -e .
-```
+2. For different transports:
+   - **Stdio**: Start in development mode:
+     ```bash
+     uv run mcp dev vcore_mcp.py
+     ```
+   - **Streamable HTTP**: Ensure server is running first, then connect to `http://[host]:[port]/mcp`
+   - **SSE**: Ensure server is running first, then connect to `http://[host]:[port]/sse`
 
-Set up environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your DocumentDB configuration
-```
-#### Streamable HTTP and SSE Transport
-
-```bash
-# Set TRANSPORT=streamable-http or sse in .env then:
-uv run src/documentdb_mcp.py
-```
-The MCP server will essentially be run as an API endpoint that you can then connect to with config shown below.
-
-#### Stdio Transport
-With stdio, the MCP client itself can spin up the MCP server, so nothing to run at this point.
-
-### Using Docker
-
-#### SSE Transport
-```bash
-docker build -t documentdb-mcp --build-arg PORT=8070 .
-docker run --env-file .env -p 8070:8070 documentdb-mcp
-```
-The MCP server will essentially be run as an API endpoint within the container that you can then connect to with config shown below.
-
-#### Stdio Transport
-With stdio, the MCP client itself can spin up the MCP server container, so nothing to run at this point.
+For more details, see the [MCP Inspector documentation](https://modelcontextprotocol.io/docs/tools/inspector).
 
 ## Contributing
 

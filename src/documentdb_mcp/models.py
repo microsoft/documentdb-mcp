@@ -63,6 +63,11 @@ class ListIndexesResponse:
     indexes: List[Dict[str, Any]]
 
 @dataclass
+class SuccessResponse:
+    """Response for successful operations."""
+    message: str
+
+@dataclass
 class ErrorResponse:
     error: str
 
