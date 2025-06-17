@@ -81,7 +81,7 @@ cp .env.example .env
 #### Running the Server
 - **Streamable HTTP**: 
   ```bash
-# Set TRANSPORT=streamable-http or sse in .env then:
+  # Set TRANSPORT=streamable-http or sse in .env then:
   uv run src/documentdb_mcp.py
   ```
 - **Stdio**: 
