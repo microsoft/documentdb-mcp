@@ -1,5 +1,3 @@
-from mcp.server.fastmcp import FastMCP
-from src.documentdb_mcp.context_manager import documentdb_lifespan
 from src.documentdb_mcp.mcp_config import TRANSPORT
 from src.documentdb_mcp.app import mcp
 import asyncio

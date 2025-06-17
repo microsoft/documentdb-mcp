@@ -103,6 +103,7 @@ With stdio, the MCP client itself can spin up the MCP server, so nothing to run 
 
 #### SSE Transport
 ```bash
+docker build -t documentdb-mcp --build-arg PORT=8070 .
 docker run --env-file .env -p 8070:8070 documentdb-mcp
 ```
 The MCP server will essentially be run as an API endpoint within the container that you can then connect to with config shown below.

@@ -1,9 +1,9 @@
 from mcp.server.fastmcp import FastMCP, Context
 from src.documentdb_mcp.mcp_config import HOST, PORT
 from src.documentdb_mcp.context_manager import documentdb_lifespan
-from src.documentdb_mcp.models import DBInfoResponse, DocumentQueryResponse, InsertResponse, UpdateResponse, DeleteResponse, AggregateResponse, CreateIndexResponse, ListIndexesResponse, ErrorResponse
+from src.documentdb_mcp.models import DBInfoResponse, DocumentQueryResponse, InsertOneResponse, InsertManyResponse, UpdateResponse, DeleteResponse, AggregateResponse, CreateIndexResponse, ListIndexesResponse, ErrorResponse
 from typing import Optional, Dict, Any, List
-
+from db_tools import list_databases
 mcp = FastMCP(
     "documentdb-mcp",
     description="MCP server for DocumentDB database operations",
@@ -12,14 +12,25 @@ mcp = FastMCP(
     port=PORT
 )
 
+@mcp.tool()(list_databases)
+
 @mcp.tool()
-async def list_databases(ctx: Context) -> List[str]:
-    """List all databases in the DocumentDB instance."""
+async def db_stats(ctx: Context, db_name: str) -> Dict:
+    """
+    Get database statistics.
+    Note dbStats.scaleFactor is 1 by default then dbStats.size, dbStats.avgObjSize, dbStats.storageSize, dbStats.indexSize, dbStats.totalSize are in bytes.
+    
+    Args:
+        db_name: Name of the database
+    """
     try:
         client = ctx.request_context.lifespan_context.client
-        return client.list_database_names()
+        db = client[db_name]
+        # ToDo wrap the response
+        return db.command("dbStats")
     except Exception as e:
         return ErrorResponse(error=str(e))
+
 
 @mcp.tool()
 async def get_db_info(ctx: Context, db_name: str) -> DBInfoResponse:
@@ -46,6 +57,44 @@ async def get_db_info(ctx: Context, db_name: str) -> DBInfoResponse:
     except Exception as e:
         return ErrorResponse(error=str(e))
 
+@mcp.tool()
+async def collection_stats(ctx: Context, db_name: str, collection_name: str) -> Dict:
+    """
+    Get collection statistics includes size, count, avgObjSize, storageSize, nindexes, indexBuilds, totalIndexSize, totalSize, indexSizes, scaleFactor.
+    Note size, avgObjSize, storageSize, totalIndexSize, totalSize, indexSizes are in bytes when scaleFactor is 1.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+    
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        return db.command("collStats", collection_name)
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def rename_collection(ctx: Context, db_name: str, collection_name: str, new_collection_name: str) -> Dict:
+    """
+    Rename a collection.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection to rename
+        new_collection_name: New name for the collection
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        db[collection_name].rename(new_collection_name)
+        return {"message": "Collection renamed successfully"}
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+
+# todo add pagination
 @mcp.tool()
 async def find_documents(ctx: Context, db_name: str, collection_name: str, query: Dict = {}, 
                         limit: int = 100, skip: int = 0) -> DocumentQueryResponse:
@@ -79,7 +128,25 @@ async def find_documents(ctx: Context, db_name: str, collection_name: str, query
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def insert_document(ctx: Context, db_name: str, collection_name: str, document: Dict) -> InsertResponse:
+async def count_documents(ctx: Context, db_name: str, collection_name: str, query: Dict = {}) -> int:
+    """
+    Count the number of documents in a collection.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        query: Query filter (MongoDB style)
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        return collection.count_documents(query)
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def insert_document(ctx: Context, db_name: str, collection_name: str, document: Dict) -> InsertOneResponse:
     """
     Insert a single document into a collection.
     
@@ -93,7 +160,7 @@ async def insert_document(ctx: Context, db_name: str, collection_name: str, docu
         db = client[db_name]
         collection = db[collection_name]
         result = collection.insert_one(document)
-        return InsertResponse(
+        return InsertOneResponse(
             inserted_id=str(result.inserted_id),
             acknowledged=result.acknowledged,
             inserted_count=1
@@ -102,7 +169,7 @@ async def insert_document(ctx: Context, db_name: str, collection_name: str, docu
         return ErrorResponse(error=str(e))
 
 @mcp.tool()
-async def insert_many(ctx: Context, db_name: str, collection_name: str, documents: List[Dict]) -> InsertResponse:
+async def insert_many(ctx: Context, db_name: str, collection_name: str, documents: List[Dict]) -> InsertManyResponse:
     """
     Insert multiple documents into a collection.
     
@@ -116,7 +183,7 @@ async def insert_many(ctx: Context, db_name: str, collection_name: str, document
         db = client[db_name]
         collection = db[collection_name]
         result = collection.insert_many(documents)
-        return InsertResponse(
+        return InsertManyResponse(
             inserted_ids=[str(id) for id in result.inserted_ids],
             acknowledged=result.acknowledged,
             inserted_count=len(result.inserted_ids)
@@ -151,27 +218,35 @@ async def update_document(ctx: Context, db_name: str, collection_name: str, filt
     except Exception as e:
         return ErrorResponse(error=str(e))
 
+
 @mcp.tool()
-async def delete_document(ctx: Context, db_name: str, collection_name: str, filter: Dict) -> DeleteResponse:
+async def update_many(ctx: Context, db_name: str, collection_name: str, filter: Dict, 
+                      update: Dict, upsert: bool = False) -> UpdateResponse:
     """
-    Delete a document from a collection.
+    Update multiple documents in a collection.
     
     Args:
         db_name: Name of the database
         collection_name: Name of the collection
-        filter: Query filter to find the document
+        filter: Query filter to find the documents
+        update: Update operations ($set, $inc, etc.)
+        upsert: Create document if it doesn't exist
     """
     try:
         client = ctx.request_context.lifespan_context.client
         db = client[db_name]
         collection = db[collection_name]
-        result = collection.delete_one(filter)
-        return DeleteResponse(
-            deleted_count=result.deleted_count,
+        result = collection.update_many(filter, update, upsert=upsert)
+        return UpdateResponse(
+            matched_count=result.matched_count,
+            modified_count=result.modified_count,
+            upserted_id=str(result.upserted_id) if result.upserted_id else None,
             acknowledged=result.acknowledged
         )
     except Exception as e:
         return ErrorResponse(error=str(e))
+
+
 
 @mcp.tool()
 async def aggregate(ctx: Context, db_name: str, collection_name: str, pipeline: List[Dict], 
@@ -197,7 +272,7 @@ async def aggregate(ctx: Context, db_name: str, collection_name: str, pipeline: 
     except Exception as e:
         return ErrorResponse(error=str(e))
 
-
+#### Index Operations
 @mcp.tool()
 async def create_index(ctx: Context, db_name: str, collection_name: str, keys: Dict, 
                       unique: bool = False, name: Optional[str] = None) -> Dict:
@@ -245,6 +320,52 @@ async def list_indexes(ctx: Context, db_name: str, collection_name: str) -> List
         collection = db[collection_name]
         indexes = list(collection.list_indexes())
         return ListIndexesResponse(indexes=indexes)
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+## Danger Zone
+@mcp.tool()
+async def delete_document(ctx: Context, db_name: str, collection_name: str, filter: Dict) -> DeleteResponse:
+    """
+    Delete a document from a collection.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        filter: Query filter to find the document
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        result = collection.delete_one(filter)
+        return DeleteResponse(
+            deleted_count=result.deleted_count,
+            acknowledged=result.acknowledged
+        )
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+# delete many
+@mcp.tool()
+async def delete_many(ctx: Context, db_name: str, collection_name: str, filter: Dict) -> DeleteResponse:
+    """
+    Delete multiple documents from a collection.
+    
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        filter: Query filter to find the documents
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        result = collection.delete_many(filter)
+        return DeleteResponse(
+            deleted_count=result.deleted_count,
+            acknowledged=result.acknowledged
+        )
     except Exception as e:
         return ErrorResponse(error=str(e))
 
@@ -296,5 +417,81 @@ async def drop_database(ctx: Context, db_name: str) -> Dict:
         client = ctx.request_context.lifespan_context.client
         client.drop_database(db_name)
         return {"message": "Database dropped successfully"}
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def explain_aggregate_query(ctx: Context, db_name: str, collection_name: str, pipeline: List[Dict]) -> Dict:
+    """
+    Explain a query.
+    provides information on the execution of the following commands: aggregate
+    example col.find(
+            {"cuisine":"Italian"},
+            {"name" : 1, "address.zipcode" :   1, "address.coord" : 1}
+        ).explain()
+        or 
+        https://www.mongodb.com/community/forums/t/how-to-get-totaldocsexamined-with-explain-in-pymongo/110306/9
+        explain_output = db.command('aggregate', 'collection_name', pipeline=agg_pipeline, explain=True)
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        query: Query to explain
+        explain_mode: Explain mode (queryPlanner, executionStats, allPlansExecution)
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        explain_output = db.command('aggregate', collection_name, pipeline=pipeline, explain=True)
+        return explain_output
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+@mcp.tool()
+async def explain_find_query(ctx: Context, db_name: str, collection_name: str, query: Dict) -> Dict:
+    """
+    Explain a query.
+    provides information on the execution of the following commands: find
+    example col.find(
+            {"cuisine":"Italian"},
+            {"name" : 1, "address.zipcode" :   1, "address.coord" : 1}
+        ).explain()
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        query: Query to explain
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        explain_output = collection.find(query=query).explain()
+        return explain_output
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+
+@mcp.tool()
+async def current_ops(ctx: Context, ops: Dict) -> Dict:
+    """
+    example
+    command = {
+            "currentOp": True,
+            "$or": [
+                {"op": "command", "command.createIndexes": {"$exists": True}},
+                {"op": "none", "msg": "/^Index Build/"},
+            ],
+        }
+
+
+        indexCreatingOps = cls.client.admin.command(command)
+
+
+    """
+    command = {"currentOp": True}
+    if ops:
+        command.update(ops)
+    try:
+        client = ctx.request_context.lifespan_context.client
+        return client.admin.command(command)
     except Exception as e:
         return ErrorResponse(error=str(e))
