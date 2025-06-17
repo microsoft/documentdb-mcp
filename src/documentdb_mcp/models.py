@@ -5,7 +5,7 @@ from pymongo import MongoClient
 @dataclass
 class DocumentDBContext:
     """Context for the DocumentDB MCP server."""
-    db: MongoClient
+    client: MongoClient
 
 @dataclass
 class DBInfoResponse:
@@ -22,8 +22,16 @@ class DocumentQueryResponse:
     has_more: bool
 
 @dataclass
-class InsertResponse:
+class InsertOneResponse:
+    """Response for single document insert operation."""
     inserted_id: str
+    acknowledged: bool
+    inserted_count: int
+
+@dataclass
+class InsertManyResponse:
+    """Response for multiple document insert operation."""
+    inserted_ids: List[str]
     acknowledged: bool
     inserted_count: int
 
@@ -53,6 +61,11 @@ class CreateIndexResponse:
 @dataclass
 class ListIndexesResponse:
     indexes: List[Dict[str, Any]]
+
+@dataclass
+class SuccessResponse:
+    """Response for successful operations."""
+    message: str
 
 @dataclass
 class ErrorResponse:
