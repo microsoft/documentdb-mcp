@@ -18,6 +18,7 @@ A Model Context Protocol (MCP) server implementation for DocumentDB operations, 
 | | `drop_index` | Drop an index |
 | | `current_ops` | Monitor current operations (including index builds) |
 | **Document Operations** | `find_documents` | Find documents with pagination |
+| | `find_and_modify` | Find and modify a document |
 | | `count_documents` | Count documents |
 | | `insert_document` | Insert a single document |
 | | `insert_many` | Insert multiple documents |

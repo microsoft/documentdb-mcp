@@ -1,6 +1,9 @@
-from typing import Dict, List
+from typing import Dict
+
 from mcp.server.fastmcp import Context
+
 from src.documentdb_mcp.models import ErrorResponse, SuccessResponse
+
 
 async def collection_stats(ctx: Context, db_name: str, collection_name: str) -> Dict:
     """

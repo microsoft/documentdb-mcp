@@ -1,6 +1,9 @@
 from typing import Dict, List, Optional
+
 from mcp.server.fastmcp import Context
+
 from src.documentdb_mcp.models import ErrorResponse, SuccessResponse
+
 
 async def create_index(ctx: Context, db_name: str, collection_name: str, keys: Dict, 
                       unique: bool = False, name: Optional[str] = None) -> SuccessResponse:

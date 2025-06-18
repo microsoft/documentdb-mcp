@@ -1,6 +1,9 @@
-from typing import List, Dict
+from typing import Dict, List
+
 from mcp.server.fastmcp import Context
-from src.documentdb_mcp.models import ErrorResponse, SuccessResponse, DBInfoResponse
+
+from src.documentdb_mcp.models import DBInfoResponse, ErrorResponse, SuccessResponse
+
 
 async def list_databases(ctx: Context) -> List[str]:
     """
