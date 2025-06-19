@@ -169,13 +169,12 @@ The connection string from Option 2 should be used as the `DOCUMENTDB_URI` envir
 For more detailed information about the DocumentDB gateway, refer to the official documentation [here](https://github.com/microsoft/documentdb/blob/main/docs/v1/gateway.md#getting-started-with-documentdb-gateway).
 
 ### Environment Variables
-
-After setting up DocumentDB, configure your `.env` file or mcp configure json with the following variables:
+After provisioning your DocumentDB instance, set the following in your `.env` file:
 ```bash
 DOCUMENTDB_URI=your_documentdb_uri
 ```
 
-Note: Ensure you replace `your_documentdb_uri` with your actual DocumentDB connection string and desired database name.
+Make sure to replace `your_documentdb_uri` with your actual DocumentDB connection string.
 
 
 
