@@ -1,5 +1,7 @@
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 TRANSPORT = os.getenv("TRANSPORT", "streamable-http")

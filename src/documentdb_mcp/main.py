@@ -1,6 +1,8 @@
-from src.documentdb_mcp.mcp_config import TRANSPORT
-from src.documentdb_mcp.app import mcp
 import asyncio
+
+from src.documentdb_mcp.app import mcp
+from src.documentdb_mcp.mcp_config import TRANSPORT
+
 
 async def main():
     transport = TRANSPORT

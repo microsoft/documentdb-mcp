@@ -1,14 +1,15 @@
-from typing import Dict, List, Optional, AsyncGenerator
+from typing import Dict, List
+
 from mcp.server.fastmcp import Context
+
 from src.documentdb_mcp.models import (
-    DocumentQueryResponse,
-    InsertOneResponse,
-    InsertManyResponse,
-    UpdateResponse,
-    DeleteResponse,
     AggregateResponse,
+    DeleteResponse,
+    DocumentQueryResponse,
     ErrorResponse,
-    SuccessResponse,
+    InsertManyResponse,
+    InsertOneResponse,
+    UpdateResponse,
 )
 
 
@@ -49,6 +50,33 @@ async def find_documents(
             skip=skip,
             has_more=(skip + len(documents)) < total_count,
         )
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+
+async def find_and_modify(
+    ctx: Context,
+    db_name: str,
+    collection_name: str,
+    query: Dict,
+    update: Dict,
+    upsert: bool = False,
+) -> DocumentQueryResponse:
+    """Find and modify a document in a collection.
+        Will return the document before the update if it exists, or None if it doesn't.
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection to query
+        query: Query filter (MongoDB style)
+        update: Update operations ($set, $inc, etc.)
+        upsert: Create document if it doesn't exist
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        result = collection.find_one_and_update(query, update, upsert=upsert)
+
+        return result
     except Exception as e:
         return ErrorResponse(error=str(e))
 

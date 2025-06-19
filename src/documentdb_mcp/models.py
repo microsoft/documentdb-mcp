@@ -1,6 +1,8 @@
 from dataclasses import dataclass
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from pymongo import MongoClient
+
 
 @dataclass
 class DocumentDBContext:
