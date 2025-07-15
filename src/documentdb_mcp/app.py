@@ -2,6 +2,16 @@ from mcp.server.fastmcp import FastMCP
 
 from src.documentdb_mcp.context_manager import documentdb_lifespan
 from src.documentdb_mcp.mcp_config import HOST, PORT
+from src.documentdb_mcp.tools.analysis import (
+    check_plotly_availability,
+    create_plotly_bar_chart,
+    create_plotly_histogram,
+    create_plotly_scatter,
+    create_plotly_time_series,
+    get_analysis_prompt,
+    get_documentdb_operations_prompt,
+    get_field_statistics,
+)
 from src.documentdb_mcp.tools.collection import (
     collection_stats,
     drop_collection,
@@ -20,8 +30,8 @@ from src.documentdb_mcp.tools.document import (
     delete_many,
     explain_aggregate_query,
     explain_find_query,
-    find_documents,
     find_and_modify,
+    find_documents,
     insert_document,
     insert_many,
     update_document,
@@ -73,3 +83,13 @@ mcp.add_tool(delete_many)
 mcp.add_tool(aggregate)
 mcp.add_tool(explain_aggregate_query)
 mcp.add_tool(explain_find_query)
+
+# Analysis and plotting tools
+mcp.add_tool(check_plotly_availability)
+mcp.add_tool(get_analysis_prompt)
+mcp.add_tool(get_documentdb_operations_prompt)
+mcp.add_tool(get_field_statistics)
+mcp.add_tool(create_plotly_histogram)
+mcp.add_tool(create_plotly_scatter)
+mcp.add_tool(create_plotly_bar_chart)
+mcp.add_tool(create_plotly_time_series)
