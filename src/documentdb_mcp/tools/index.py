@@ -82,3 +82,20 @@ async def current_ops(ctx: Context, ops: Optional[Dict]) -> Dict:
         return client.admin.command(command)
     except Exception as e:
         return ErrorResponse(error=str(e))
+
+async def index_stats(ctx: Context, db_name: str, collection_name: str) -> Dict:
+    """
+    Get statistics about the indexes on a collection.
+
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        collection = db[collection_name]
+        stats = collection.aggregate([{"$indexStats": {}}])
+        return {"indexes": list(stats)}
+    except Exception as e:
+        return ErrorResponse(error=str(e))

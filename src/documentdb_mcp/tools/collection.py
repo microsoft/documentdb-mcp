@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 
 from mcp.server.fastmcp import Context
 
@@ -66,3 +66,24 @@ async def drop_collection(ctx: Context, db_name: str, collection_name: str) -> S
         return SuccessResponse(message="Collection dropped successfully")
     except Exception as e:
         return ErrorResponse(error=str(e))
+
+async def sample_documents(ctx: Context, db_name: str, collection_name: str, sample_size: int = 10) -> List[Dict]:
+    """Useful to understand collection data schema.
+    Randomly sample documents from a collection for analysis.
+
+    Args:
+        db_name: Name of the database
+        collection_name: Name of the collection
+        sample_size: Number of documents to sample
+    """
+    try:
+        client = ctx.request_context.lifespan_context.client
+        db = client[db_name]
+        pipeline = [
+            {"$sample": {"size": sample_size}}
+        ]
+        docs = list(db[collection_name].aggregate(pipeline))
+        return docs
+    except Exception as e:
+        return ErrorResponse(error=str(e))
+        
