@@ -181,11 +181,7 @@ async def optimize_find_query(
     limit: int  = None,
     projection: Dict = None
 ) -> dict:
-    """Optimize find query.
-    First step for identifying performance bottlenecks and optimizing find query execution.
-
-    Provide actionable insights for find query performance optimization on given collection,
-    including query explain output, execution statistics, collection statistics, and index information.
+    """Provide all the information needed for optimizing find query.
 
     Args:
         db_name: Name of the database.
@@ -206,8 +202,7 @@ async def optimize_find_query(
             "analysis": analysis,
             "indexes": indexes,
             "indexes_stats": indexes_stats,
-            "collections_stats": collections_stats,
-            "next_steps": "If lacking index, use `create_index` to create it. If rewriting query, use `find` to with the new query."
+            "collections_stats": collections_stats
         }
     except Exception as e:
         return ErrorResponse(error=str(e))
@@ -218,10 +213,7 @@ async def optimize_count_query(
     collection_name: str,
     query: Dict
 ) -> dict:
-    """First step for identifying performance bottlenecks and optimizing count query execution.
-
-    Provide actionable insights for count query performance optimization on given collection,
-    including query explain output, execution statistics, collection statistics, and index information.
+    """Provide all the information needed for optimizing count query.
 
     Args:
         db_name: Name of the database.
@@ -250,10 +242,7 @@ async def optimize_aggregate_query(
     collection_name: str,
     pipeline: List[Dict]
 ) -> dict:
-    """First step for identifying performance bottlenecks and optimizing aggregate query execution.
-    
-    Provide actionable insights for aggregate query performance optimization on given collection,
-    including query explain output, execution statistics, collection statistics, and index information.
+    """Provide all the information needed for optimizing aggregate query.
 
     Args:
         db_name: Name of the database.
