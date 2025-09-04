@@ -68,8 +68,7 @@ async def drop_collection(ctx: Context, db_name: str, collection_name: str) -> S
         return ErrorResponse(error=str(e))
 
 async def sample_documents(ctx: Context, db_name: str, collection_name: str, sample_size: int = 10) -> List[Dict]:
-    """Useful to understand collection data schema.
-    Randomly sample documents from a collection for analysis.
+    """Retrieve sample documents from specific collection. Useful for understanding data schema and query generation.
 
     Args:
         db_name: Name of the database

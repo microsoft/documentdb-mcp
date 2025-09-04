@@ -42,17 +42,9 @@ from src.documentdb_mcp.tools.workflow import (
     optimize_find_query,
     optimize_aggregate_query,
     optimize_count_query,
-    # optimize_query,
-    # docdb_index_advisor_prompt
-    sample_documents_for_generation,
     list_databases_for_generation,
     get_db_info_for_generation
 )
-
-# from src.documentdb_mcp.tools.prompt import (
-#     cross_collection_prompt,
-#     # query_optimization_prompt
-# )
 
 mcp = FastMCP(
     "documentdb-mcp",
@@ -98,12 +90,10 @@ mcp.add_tool(explain_find_query)
 mcp.add_tool(query_on_different_collections)
 mcp.add_tool(explain_count_query)
 
-# Workflow tools
+# Index advisor tools
 mcp.add_tool(optimize_find_query)
 mcp.add_tool(optimize_aggregate_query)
 mcp.add_tool(optimize_count_query)
-
-# mcp.add_prompt(docdb_index_advisor_prompt)
-mcp.add_tool(sample_documents_for_generation)
+# Query generation tools
 mcp.add_tool(list_databases_for_generation)
 mcp.add_tool(get_db_info_for_generation)

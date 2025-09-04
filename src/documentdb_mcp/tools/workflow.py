@@ -1,20 +1,12 @@
-from mcp.server.fastmcp import prompts
 from enum import Enum
 from typing import Dict, List
 
 from mcp.server.fastmcp import Context
 
 from src.documentdb_mcp.models import (
-    AggregateResponse,
-    DeleteResponse,
-    DocumentQueryResponse,
     ErrorResponse,
-    InsertManyResponse,
-    InsertOneResponse,
-    UpdateResponse,
 )
 from src.documentdb_mcp.tools.collection import (
-    sample_documents,
     collection_stats,
 )
 from src.documentdb_mcp.tools.document import (
@@ -26,7 +18,7 @@ from src.documentdb_mcp.tools.index import (
     list_indexes,
     index_stats,
 )
-from src.documentdb_mcp.models import DBInfoResponse, ErrorResponse, SuccessResponse
+from src.documentdb_mcp.models import ErrorResponse
 
 class QueryType(Enum):
     FIND = "find"
@@ -94,30 +86,6 @@ def analyze_explain_metrics(explain_output: dict, projection: dict = None) -> di
         return False
 
     results = []
-    # results.append({
-    #     "healthMetricsEntries": [
-    #         {
-    #             "name": "amplificationRatio",
-    #             "description": "Amplification ratio is calculated as totalDocsExamined / nReturned. It measures how many documents had to be scanned for each returned result.",
-    #             "suggestion": "Strive to keep this ratio close to 1. If the value is high, consider creating a more selective index or adjusting the query filter."
-    #         },
-    #         {
-    #             "name": "keyDocRatio",
-    #             "description": "Key-doc ratio is calculated as totalKeysExamined / totalDocsExamined. It shows how many index entries were read for each document examined.",
-    #             "suggestion": "If this ratio is high, it indicates expensive index filtering. Consider optimizing the index structure or query predicates."
-    #         },
-    #         {
-    #             "name": "triggersSort",
-    #             "description": "Indicates whether the query plan includes a SORT stage that requires in-memory sorting.",
-    #             "suggestion": "If true, add or reorder index keys to support the sort order and avoid in-memory SORT."
-    #         },
-    #         {
-    #             "name": "covered",
-    #             "description": "Indicates whether the query is covered by the index, meaning all projected fields can be returned from the index without fetching documents.",
-    #             "suggestion": "If not covered, consider adding projected fields into the index to enable covered queries."
-    #         }
-    #     ]
-    # })
 
     # --- case 1: simple query (no "stages")
     if "stages" not in explain_output:
@@ -234,7 +202,6 @@ async def optimize_find_query(
         indexes_stats = await index_stats(ctx, db_name, collection_name)
         collections_stats = await collection_stats(ctx, db_name, collection_name)
         return {
-            # "instruction": "If the recommendation involves **direct actions** (e.g., creating an index, dropping an index, modifying the query), propose them explicitly so the Agent can **directly call the relevant API to execute**.",
             "explain": explain_output,
             "analysis": analysis,
             "indexes": indexes,
@@ -309,117 +276,6 @@ async def optimize_aggregate_query(
     except Exception as e:
         return ErrorResponse(error=str(e))
 
-# async def optimize_query(
-#     ctx: Context,
-# ) -> dict:
-#     """**First step for identifying performance bottlenecks and optimizing query execution.**
-#     Provide top level instructions for query performance optimization.
-#     """
-#     instructions = f"""
-# You are a database performance optimization assistant.
-# You need to extract the target database, collection, and query document from customer input: {ctx.input}. 
-
-# Use the function `optimization_insight_for_find_query` or `optimization_insight_for_aggregate_query` based on the query type, it will provide a comprehensive analysis of the query performance.
-# The function already includes:
-# - The query execution plan (explain output)  
-# - Existing indexes and their usage  
-# - Collection statistics  
-
-# ⚠️ Do not attempt to call `explain` or fetch indexes/statistics by yourself — rely only on the function output.
-
-# Your tasks:
-# 1. Review the provided function output.  
-# 2. Identify performance bottlenecks.  
-# 3. Provide actionable recommendations, including:  
-#    - Index creation or removal  
-#    - Query rewrite suggestions  
-#    - Schema or data distribution considerations  
-
-# If the recommendation involves **direct actions** (e.g., creating an index, dropping an index, modifying the query),  
-# propose them explicitly so the Agent can **directly call the relevant API to execute**.
-# """
-#     print(instructions)
-#     return instructions
-
-# async def optimize_find_query_workflow(
-#     db_name: str,
-#     collection_name: str,
-#     query_doc: Dict,
-#     sort: Dict = None,
-#     limit: int  = None,
-#     projection: Dict = None
-# ) -> dict:
-#     try:
-#         ctx = Context()
-#         explain_output = await explain_find_query(ctx, db_name, collection_name, query=query_doc, sort=sort, limit=limit, projection=projection)
-#         # analysis = analyze_explain_metrics(explain_output, projection)
-#         indexes = await list_indexes(ctx, db_name, collection_name)
-#         indexes_stats = await index_stats(ctx, db_name, collection_name)
-#         collections_stats = await collection_stats(ctx, db_name, collection_name)
-#         return {
-#             # "instruction": "If the recommendation involves **direct actions** (e.g., creating an index, dropping an index, modifying the query), propose them explicitly so the Agent can **directly call the relevant API to execute**.",
-#             "explain": explain_output,
-#             # "analysis": analysis,
-#             "indexes": indexes,
-#             "indexes_stats": indexes_stats,
-#             "collections_stats": collections_stats
-#         }
-#     except Exception as e:
-#         return ErrorResponse(error=str(e))
-    
-# docdb_index_advisor_prompt = prompts.Prompt(
-#     name="docdb_index_advisor",
-#     description="Analyze MongoDB/CosmosDB find query performance and provide actionable optimization suggestions.",
-#     arguments=[
-#         {"name": "db_name", "type": "string", "description": "The name of the database."},
-#         {"name": "collection_name", "type": "string", "description": "The name of the collection."},
-#         {"name": "query_doc", "type": "object", "description": "The query document from the original query."},
-#         {"name": "sort", "type": "object", "description": "Sort stage applied after `find`, None if not specified."},
-#         {"name": "limit", "type": "number", "description": "Limit stage applied after `find`, None if not specified."},
-#         {"name": "projection", "type": "object", "description": "Projection stage applied after `find`, None if not specified."},
-#     ],
-#     template="""
-# You are a database performance optimization assistant. 
-
-# Use the function `optimization_insight_for_find_query`, it will provide a comprehensive analysis of the query performance.  
-# The function already includes:
-# - The query execution plan (explain output)  
-# - Existing indexes and their usage  
-# - Collection statistics  
-
-# ⚠️ Do not attempt to call `explain` or fetch indexes/statistics by yourself — rely only on the function output.
-
-# Your tasks:
-# 1. Review the provided function output.  
-# 2. Identify performance bottlenecks.  
-# 3. Provide actionable recommendations, including:  
-#    - Index creation or removal  
-#    - Query rewrite suggestions  
-#    - Schema or data distribution considerations  
-
-# If the recommendation involves **direct actions** (e.g., creating an index, dropping an index, modifying the query),  
-# propose them explicitly so the Agent can **directly call the relevant API to execute**.  
-
-# Output must be a JSON object with the following structure:
-# {
-#   "bottlenecks": [ "list of identified performance issues" ],
-#   "index_recommendations": [ "list of suggested indexes or changes" ],
-#   "query_rewrite_suggestions": [ "suggestions for restructuring the query" ],
-#   "executable_actions": [ "API calls the agent should attempt (e.g., createIndex, dropIndex, runQuery)" ],
-#   "notes": "any additional insights"
-# }
-
-# Database: {{db_name}}  
-# Collection: {{collection_name}}  
-# Query Document: {{query_doc}}  
-# Sort: {{sort}}  
-# Limit: {{limit}}  
-# Projection: {{projection}}  
-#     """,
-#     fn=optimize_find_query_workflow,
-# )
-
-
 async def list_databases_for_generation(ctx: Context) -> List[str]:
     """
     List databases in the DocumentDB instance to provide better insights for query generation.
@@ -459,8 +315,7 @@ async def db_stats_for_generation(ctx: Context, db_name: str) -> Dict:
         return ErrorResponse(error=str(e))
 
 async def get_db_info_for_generation(ctx: Context, db_name: str) -> Dict:
-    """
-    Get database information including name and collection names for query generation.
+    """Get database information including name and collection names. Useful for query generation.
     
     Args:
         db_name: Name of the database
@@ -478,49 +333,7 @@ async def get_db_info_for_generation(ctx: Context, db_name: str) -> Dict:
         return {
             "database_name": db.name,
             "collection_names": db.list_collection_names(),
-            "next_step": "Run `sample_documents_for_generation` on relative collections"
+            "next_step": "Run `sample_documents` on relative collections"
         }
     except Exception as e:
         return ErrorResponse(error=str(e))
-    
-async def sample_documents_for_generation(ctx: Context, db_name: str, collection_name: str, sample_size: int = 10) -> List[Dict]:
-    """Useful to understand collection data schema for query generation
-
-    Args:
-        db_name: Name of the database
-        collection_name: Name of the collection
-        sample_size: Number of documents to sample
-    """
-    try:
-        client = ctx.request_context.lifespan_context.client
-        db = client[db_name]
-        pipeline = [
-            {"$sample": {"size": sample_size}}
-        ]
-        docs = list(db[collection_name].aggregate(pipeline))
-        return docs
-    except Exception as e:
-        return ErrorResponse(error=str(e))
-    
-# async def aggregate(ctx: Context, db_name: str, collection_name: str, pipeline: List[Dict], 
-#                    allow_disk_use: bool = False) -> AggregateResponse:
-#     """
-#     Run an aggregation pipeline on a collection.
-    
-#     Args:
-#         db_name: Name of the database
-#         collection_name: Name of the collection
-#         pipeline: List of aggregation stages
-#         allow_disk_use: Allow pipeline stages to write to disk
-#     """
-#     try:
-#         client = ctx.request_context.lifespan_context.client
-#         db = client[db_name]
-#         collection = db[collection_name]
-#         results = list(collection.aggregate(pipeline, allowDiskUse=allow_disk_use))
-#         return AggregateResponse(
-#             results=results,
-#             total_count=len(results)
-#         )
-#     except Exception as e:
-#         return ErrorResponse(error=str(e))
