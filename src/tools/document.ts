@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CallToolRequest, CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { getDocumentDBContext } from '../context/documentdb';
+import { getDocumentDBContext } from '../context/documentdb.js';
 import { 
     type DocumentQueryResponse, 
     type InsertOneResponse, 
@@ -13,7 +13,7 @@ import {
     type DeleteResponse,
     type AggregateResponse,
     type ErrorResponse 
-} from '../models';
+} from '../models.js';
 
 /**
  * Find documents in a collection.

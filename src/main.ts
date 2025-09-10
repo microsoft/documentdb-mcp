@@ -3,8 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { runServer } from './server';
-import { config } from './config';
+import { runServer } from './server.js';
+import { config } from './config.js';
 import path from "path";
 import { fileURLToPath } from "url";
 

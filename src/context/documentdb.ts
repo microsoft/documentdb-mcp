@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { MongoClient } from 'mongodb';
-import { type DocumentDBContext } from '../models';
-import { config } from '../config';
+import { type DocumentDBContext } from '../models.js';
+import { config } from '../config.js';
 
 /**
  * Global MongoDB client instance

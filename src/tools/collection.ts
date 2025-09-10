@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CallToolRequest, CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { getDocumentDBContext } from '../context/documentdb';
-import { type ErrorResponse, type SuccessResponse } from '../models';
+import { getDocumentDBContext } from '../context/documentdb.js';
+import { type ErrorResponse, type SuccessResponse } from '../models.js';
 
 /**
  * Get detailed statistics about a collection's size and storage usage.
