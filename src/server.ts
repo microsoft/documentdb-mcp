@@ -21,7 +21,7 @@ import {
     getDbInfo, 
     dropDatabaseTool, 
     dropDatabase 
-} from './tools/database';
+} from './tools/database.js';
 import { 
     collectionStatsTool, 
     collectionStats, 
@@ -31,7 +31,7 @@ import {
     dropCollection, 
     sampleDocumentsTool, 
     sampleDocuments 
-} from './tools/collection';
+} from './tools/collection.js';
 import { 
     findDocumentsTool, 
     findDocuments, 
@@ -47,7 +47,7 @@ import {
     deleteDocument, 
     aggregateTool, 
     aggregate 
-} from './tools/document';
+} from './tools/document.js';
 import { 
     createIndexTool, 
     createIndex, 
@@ -59,7 +59,7 @@ import {
     indexStats, 
     currentOpsTool, 
     currentOps 
-} from './tools/index';
+} from './tools/index.js';
 import { 
     optimizeFindQueryTool, 
     optimizeFindQuery, 
@@ -69,9 +69,9 @@ import {
     listDatabasesForGeneration, 
     getDbInfoForGenerationTool, 
     getDbInfoForGeneration 
-} from './tools/workflow';
+} from './tools/workflow.js';
 
-import { initializeDocumentDBContext, closeDocumentDBContext } from './context/documentdb';
+import { initializeDocumentDBContext, closeDocumentDBContext } from './context/documentdb.js';
 import { config } from './config.js';
 
 /**

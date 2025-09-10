@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CallToolRequest, CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { getDocumentDBContext } from '../context/documentdb';
-import { type DBInfoResponse, type ErrorResponse, type SuccessResponse } from '../models';
+import { getDocumentDBContext } from '../context/documentdb.js';
+import { type DBInfoResponse, type ErrorResponse, type SuccessResponse } from '../models.js';
 
 /**
  * List all databases in the DocumentDB instance.

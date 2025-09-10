@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CallToolRequest, CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { getDocumentDBContext } from '../context/documentdb';
-import { type CreateIndexResponse, type ListIndexesResponse, type SuccessResponse, type ErrorResponse } from '../models';
+import { getDocumentDBContext } from '../context/documentdb.js';
+import { type CreateIndexResponse, type ListIndexesResponse, type SuccessResponse, type ErrorResponse } from '../models.js';
 
 /**
  * Create an index on a collection.

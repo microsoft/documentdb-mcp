@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CallToolRequest, CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { getDocumentDBContext } from '../context/documentdb';
-import { type DBInfoResponse, type ErrorResponse } from '../models';
+import { getDocumentDBContext } from '../context/documentdb.js';
+import { type DBInfoResponse, type ErrorResponse } from '../models.js';
 
 /**
  * Optimize a find query by analyzing index usage and suggesting improvements.
