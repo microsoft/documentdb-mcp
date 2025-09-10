@@ -6,7 +6,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema, CallToolRequest, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { randomUUID } from 'node:crypto';
@@ -71,119 +71,164 @@ import {
     getDbInfoForGeneration 
 } from './tools/workflow';
 
-import { initializeDocumentDBContext, closeDocumentDBContext } from './context/documentdb';
+import { initializeDocumentDBContext, closeDocumentDBContext, setInjectedClient } from './context/documentdb';
 import { config } from './config.js';
+import { type MongoClient } from 'mongodb';
 
 /**
- * Create and configure the MCP server
+ * DocumentDB MCP Server class that supports client injection
+ */
+export class DocumentDBMCPServer {
+    private server: Server;
+    private injectedClient: MongoClient | null;
+
+    constructor(client?: MongoClient) {
+        this.injectedClient = client || null;
+        this.server = this.createServer();
+    }
+
+    /**
+     * Get the underlying MCP server instance
+     */
+    getServer(): Server {
+        return this.server;
+    }
+
+    /**
+     * Create and configure the MCP server with injected client support
+     */
+    private createServer(): Server {
+        const server = new Server(
+            {
+                name: 'documentdb-mcp-server',
+                version: '0.1.0',
+            },
+            {
+                capabilities: {
+                    tools: {},
+                },
+            }
+        );
+
+        // All available tools
+        const tools = [
+            // Database tools
+            listDatabasesTool,
+            dbStatsTool,
+            getDbInfoTool,
+            dropDatabaseTool,
+
+            // Collection tools
+            collectionStatsTool,
+            renameCollectionTool,
+            dropCollectionTool,
+            sampleDocumentsTool,
+
+            // Document tools
+            findDocumentsTool,
+            countDocumentsTool,
+            insertDocumentTool,
+            insertManyTool,
+            updateDocumentTool,
+            deleteDocumentTool,
+            aggregateTool,
+
+            // Index tools
+            createIndexTool,
+            listIndexesTool,
+            dropIndexTool,
+            indexStatsTool,
+            currentOpsTool,
+
+            // Workflow tools
+            optimizeFindQueryTool,
+            optimizeAggregateQueryTool,
+            listDatabasesForGenerationTool,
+            getDbInfoForGenerationTool,
+        ];
+
+        // Tool handlers mapping with client injection support
+        const toolHandlers = new Map([
+            // Database handlers
+            ['list_databases', this.wrapHandler(listDatabases)],
+            ['db_stats', this.wrapHandler(dbStats)],
+            ['get_db_info', this.wrapHandler(getDbInfo)],
+            ['drop_database', this.wrapHandler(dropDatabase)],
+
+            // Collection handlers
+            ['collection_stats', this.wrapHandler(collectionStats)],
+            ['rename_collection', this.wrapHandler(renameCollection)],
+            ['drop_collection', this.wrapHandler(dropCollection)],
+            ['sample_documents', this.wrapHandler(sampleDocuments)],
+
+            // Document handlers
+            ['find_documents', this.wrapHandler(findDocuments)],
+            ['count_documents', this.wrapHandler(countDocuments)],
+            ['insert_document', this.wrapHandler(insertDocument)],
+            ['insert_many', this.wrapHandler(insertMany)],
+            ['update_document', this.wrapHandler(updateDocument)],
+            ['delete_document', this.wrapHandler(deleteDocument)],
+            ['aggregate', this.wrapHandler(aggregate)],
+
+            // Index handlers
+            ['create_index', this.wrapHandler(createIndex)],
+            ['list_indexes', this.wrapHandler(listIndexes)],
+            ['drop_index', this.wrapHandler(dropIndex)],
+            ['index_stats', this.wrapHandler(indexStats)],
+            ['current_ops', this.wrapHandler(currentOps)],
+
+            // Workflow handlers
+            ['optimize_find_query', this.wrapHandler(optimizeFindQuery)],
+            ['optimize_aggregate_query', this.wrapHandler(optimizeAggregateQuery)],
+            ['list_databases_for_generation', this.wrapHandler(listDatabasesForGeneration)],
+            ['get_db_info_for_generation', this.wrapHandler(getDbInfoForGeneration)],
+        ]);
+
+        // Register list tools handler
+        server.setRequestHandler(ListToolsRequestSchema, async () => {
+            return {
+                tools,
+            };
+        });
+
+        // Register call tool handler
+        server.setRequestHandler(CallToolRequestSchema, async (request) => {
+            const toolName = request.params.name;
+            const handler = toolHandlers.get(toolName);
+
+            if (!handler) {
+                throw new Error(`Unknown tool: ${toolName}`);
+            }
+
+            return await handler(request);
+        });
+
+        return server;
+    }
+
+    /**
+     * Wrap a tool handler to set the injected client context
+     */
+    private wrapHandler(handler: (request: CallToolRequest) => Promise<CallToolResult>) {
+        return async (request: CallToolRequest): Promise<CallToolResult> => {
+            // Set the injected client context before calling the handler
+            const previousClient = setInjectedClient(this.injectedClient);
+            try {
+                return await handler(request);
+            } finally {
+                // Restore previous client context
+                setInjectedClient(previousClient);
+            }
+        };
+    }
+}
+
+/**
+ * Create and configure the MCP server (backward compatibility)
  */
 export function createServer(): Server {
-    const server = new Server(
-        {
-            name: 'documentdb-mcp-server',
-            version: '0.1.0',
-        },
-        {
-            capabilities: {
-                tools: {},
-            },
-        }
-    );
-
-    // All available tools
-    const tools = [
-        // Database tools
-        listDatabasesTool,
-        dbStatsTool,
-        getDbInfoTool,
-        dropDatabaseTool,
-
-        // Collection tools
-        collectionStatsTool,
-        renameCollectionTool,
-        dropCollectionTool,
-        sampleDocumentsTool,
-
-        // Document tools
-        findDocumentsTool,
-        countDocumentsTool,
-        insertDocumentTool,
-        insertManyTool,
-        updateDocumentTool,
-        deleteDocumentTool,
-        aggregateTool,
-
-        // Index tools
-        createIndexTool,
-        listIndexesTool,
-        dropIndexTool,
-        indexStatsTool,
-        currentOpsTool,
-
-        // Workflow tools
-        optimizeFindQueryTool,
-        optimizeAggregateQueryTool,
-        listDatabasesForGenerationTool,
-        getDbInfoForGenerationTool,
-    ];
-
-    // Tool handlers mapping
-    const toolHandlers = new Map([
-        // Database handlers
-        ['list_databases', listDatabases],
-        ['db_stats', dbStats],
-        ['get_db_info', getDbInfo],
-        ['drop_database', dropDatabase],
-
-        // Collection handlers
-        ['collection_stats', collectionStats],
-        ['rename_collection', renameCollection],
-        ['drop_collection', dropCollection],
-        ['sample_documents', sampleDocuments],
-
-        // Document handlers
-        ['find_documents', findDocuments],
-        ['count_documents', countDocuments],
-        ['insert_document', insertDocument],
-        ['insert_many', insertMany],
-        ['update_document', updateDocument],
-        ['delete_document', deleteDocument],
-        ['aggregate', aggregate],
-
-        // Index handlers
-        ['create_index', createIndex],
-        ['list_indexes', listIndexes],
-        ['drop_index', dropIndex],
-        ['index_stats', indexStats],
-        ['current_ops', currentOps],
-
-        // Workflow handlers
-        ['optimize_find_query', optimizeFindQuery],
-        ['optimize_aggregate_query', optimizeAggregateQuery],
-        ['list_databases_for_generation', listDatabasesForGeneration],
-        ['get_db_info_for_generation', getDbInfoForGeneration],
-    ]);
-
-    // Register list tools handler
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
-        return {
-            tools,
-        };
-    });
-
-    // Register call tool handler
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        const toolName = request.params.name;
-        const handler = toolHandlers.get(toolName);
-
-        if (!handler) {
-            throw new Error(`Unknown tool: ${toolName}`);
-        }
-
-        return await handler(request);
-    });
-
-    return server;
+    const mcpServer = new DocumentDBMCPServer();
+    return mcpServer.getServer();
 }
 
 /**

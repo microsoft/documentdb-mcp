@@ -13,6 +13,22 @@ import { config } from '../config';
 let mongoClient: MongoClient | null = null;
 
 /**
+ * Thread-local client instance for client injection
+ */
+let injectedClient: MongoClient | null = null;
+
+/**
+ * Set injected client for current context
+ * @param client The client to set or null to clear
+ * @returns The previous injected client value
+ */
+export function setInjectedClient(client: MongoClient | null): MongoClient | null {
+    const previous = injectedClient;
+    injectedClient = client;
+    return previous;
+}
+
+/**
  * Initialize MongoDB client connection
  */
 export async function initializeDocumentDBContext(): Promise<DocumentDBContext> {
@@ -37,8 +53,17 @@ export async function closeDocumentDBContext(): Promise<void> {
 
 /**
  * Get current DocumentDB context
+ * Prioritizes injected client over global client
  */
 export function getDocumentDBContext(): DocumentDBContext {
+    // Use injected client if available
+    if (injectedClient) {
+        return {
+            client: injectedClient,
+        };
+    }
+    
+    // Fall back to global client
     if (!mongoClient) {
         throw new Error('DocumentDB context not initialized. Call initializeDocumentDBContext() first.');
     }
