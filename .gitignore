@@ -50,4 +50,8 @@ Thumbs.db
 
 # Temporary files
 tmp/
-temp/
+temp/test-client-injection.ts
+example-client-injection.ts
+test-tool-handlers.ts
+CLIENT_INJECTION_API.md
+final-verification.ts
