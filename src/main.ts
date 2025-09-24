@@ -5,21 +5,39 @@
 
 import { runServer } from './server';
 import { config } from './config';
-import path from "path";
-import { fileURLToPath } from "url";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { promises as fs } from 'fs';
 
-async function main(): Promise<void> {
-    console.error(`Starting DocumentDB MCP server with transport: ${config.transport}`);
+async function ensureInstructionsFile(): Promise<void> {
+    // Source and destination paths
+    const repoRoot = path.resolve(path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    const sourceFile = path.join(repoRoot, 'documentdb_mcp.instructions.md');
+    const targetDir = path.join(repoRoot, '.github', 'instructions');
+    const targetFile = path.join(targetDir, 'documentdb_mcp.instructions.md');
 
-    if (config.transport === 'streamable-http') {
-        console.error(`Server will run on http://${config.host}:${config.port}/mcp`);
-    } else if (config.transport === 'stdio') {
-        console.error('Server will run on stdio transport');
-    } else {
-        console.error(`Warning: Unsupported transport '${config.transport}', falling back to stdio`);
+    try {
+        await fs.access(targetFile);
+        return; // Already exists
+    } catch {
+        // Need to create
     }
 
     try {
+        // Ensure source exists
+        const content = await fs.readFile(sourceFile, 'utf8');
+        await fs.mkdir(targetDir, { recursive: true });
+        await fs.writeFile(targetFile, content, 'utf8');
+        console.info(`Created missing instructions file at ${targetFile}`);
+    } catch (err) {
+        console.warn('Could not ensure instructions file:', err);
+    }
+}
+
+async function main(): Promise<void> {
+    console.info(`Starting DocumentDB MCP server with transport: ${config.transport}`);
+    try {
+        await ensureInstructionsFile();
         await runServer();
     } catch (error) {
         console.error('Failed to start server:', error);
