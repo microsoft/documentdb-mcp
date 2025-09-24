@@ -15,6 +15,8 @@ import { config } from './config.js';
 import { registerDatabaseTools } from './tools/database-tools.js';
 import { registerCollectionTools } from './tools/collection-tools.js';
 import { registerDocumentTools } from './tools/document-tools.js';
+import { registerIndexTools } from './tools/index-tools.js';
+import { registerConnectionTools } from './tools/connection-tools.js';
 import { registerWorkflowTools } from './tools/workflow-tools.js';
 
 /**
@@ -26,6 +28,9 @@ export function createServer(): McpServer {
         version: '0.1.0'
     });
 
+    // Register connection tools
+    registerConnectionTools(server);
+
     // Register database tools
     registerDatabaseTools(server);
     
@@ -34,6 +39,9 @@ export function createServer(): McpServer {
     
     // Register document tools
     registerDocumentTools(server);
+
+    // Register index tools
+    registerIndexTools(server);
 
     // Register workflow tools
     registerWorkflowTools(server);
