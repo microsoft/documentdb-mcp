@@ -6,6 +6,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { randomUUID } from 'node:crypto';
@@ -219,7 +220,81 @@ export async function runHttpServer(): Promise<void> {
 export async function runServer(): Promise<void> {
     if (config.transport === 'streamable-http') {
         await runHttpServer();
+    } else if (config.transport === 'sse') {
+        await runSseServer();
     } else {
         await runStdioServer();
     }
+}
+
+/**
+ * SSE server: GET /sse establishes stream; POST /sse/messages?sessionId=... sends messages
+ */
+export async function runSseServer(): Promise<void> {
+    const app = express();
+    app.use(express.json());
+    app.use(cors({ origin: '*' }));
+
+    const transports: Record<string, SSEServerTransport> = {};
+
+    await initializeDocumentDBContext();
+
+    app.get('/sse', async (req: Request, res: Response) => {
+        try {
+            const transport = new SSEServerTransport('/sse/messages', res);
+            transports[transport.sessionId] = transport;
+            transport.onclose = () => {
+                const sid = transport.sessionId;
+                if (transports[sid]) {
+                    delete transports[sid];
+                    console.error(`SSE session closed: ${sid}`);
+                }
+            };
+            const server = createServer();
+            await server.connect(transport); // starts transport
+            console.error(`SSE session started: ${transport.sessionId}`);
+        } catch (err) {
+            console.error('Failed to start SSE session', err);
+            if (!res.headersSent) res.status(500).end('Failed to start SSE session');
+        }
+    });
+
+    app.post('/sse/messages', async (req: Request, res: Response) => {
+        const sessionId = req.query.sessionId as string | undefined;
+        if (!sessionId || !transports[sessionId]) {
+            res.status(400).end('Invalid or missing sessionId');
+            return;
+        }
+        const transport = transports[sessionId];
+        try {
+            await transport.handlePostMessage(req as any, res as any, req.body);
+        } catch (err) {
+            console.error('Error handling SSE message', err);
+            if (!res.headersSent) res.status(500).end('Error handling message');
+        }
+    });
+
+    const cleanup = async () => {
+        console.error('Shutting down SSE server...');
+        for (const sid of Object.keys(transports)) {
+            try { await transports[sid].close(); } catch {}
+            delete transports[sid];
+        }
+        await closeDocumentDBContext();
+        process.exit(0);
+    };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    process.on('uncaughtException', async (e) => { console.error('Uncaught exception:', e); await cleanup(); });
+    process.on('unhandledRejection', async (r) => { console.error('Unhandled rejection:', r); await cleanup(); });
+
+    const server = app.listen(config.port, config.host, () => {
+        console.error(`DocumentDB MCP Server (SSE) running at http://${config.host}:${config.port}/sse`);
+        console.error('SSE endpoints: GET /sse, POST /sse/messages?sessionId=...');
+    });
+
+    return new Promise((resolve, reject) => {
+        server.on('error', reject);
+        server.on('listening', () => resolve());
+    });
 }

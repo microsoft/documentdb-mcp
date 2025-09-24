@@ -13,6 +13,8 @@ async function main(): Promise<void> {
 
     if (config.transport === 'streamable-http') {
         console.error(`Server will run on http://${config.host}:${config.port}/mcp`);
+    } else if (config.transport === 'sse') {
+        console.error(`Server will run (SSE) at http://${config.host}:${config.port}/sse`);
     } else if (config.transport === 'stdio') {
         console.error('Server will run on stdio transport');
     } else {
