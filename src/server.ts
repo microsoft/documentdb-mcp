@@ -3,73 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 
-// Import tools
-import { 
-    listDatabasesTool, 
-    listDatabases, 
-    dbStatsTool, 
-    dbStats, 
-    getDbInfoTool, 
-    getDbInfo, 
-    dropDatabaseTool, 
-    dropDatabase 
-} from './tools/database';
-import { 
-    collectionStatsTool, 
-    collectionStats, 
-    renameCollectionTool, 
-    renameCollection, 
-    dropCollectionTool, 
-    dropCollection, 
-    sampleDocumentsTool, 
-    sampleDocuments 
-} from './tools/collection';
-import { 
-    findDocumentsTool, 
-    findDocuments, 
-    countDocumentsTool, 
-    countDocuments, 
-    insertDocumentTool, 
-    insertDocument, 
-    insertManyTool, 
-    insertMany, 
-    updateDocumentTool, 
-    updateDocument, 
-    deleteDocumentTool, 
-    deleteDocument, 
-    aggregateTool, 
-    aggregate 
-} from './tools/document';
-import { 
-    createIndexTool, 
-    createIndex, 
-    listIndexesTool, 
-    listIndexes, 
-    dropIndexTool, 
-    dropIndex, 
-    indexStatsTool, 
-    indexStats, 
-    currentOpsTool, 
-    currentOps 
-} from './tools/index';
-import { 
-    optimizeFindQueryTool, 
-    optimizeFindQuery, 
-    optimizeAggregateQueryTool, 
-    optimizeAggregateQuery, 
-    listDatabasesForGenerationTool, 
-    listDatabasesForGeneration, 
-    getDbInfoForGenerationTool, 
-    getDbInfoForGeneration 
-} from './tools/workflow';
 
 import { initializeDocumentDBContext, closeDocumentDBContext } from './context/documentdb';
 import { config } from './config.js';
@@ -77,113 +18,379 @@ import { config } from './config.js';
 /**
  * Create and configure the MCP server
  */
-export function createServer(): Server {
-    const server = new Server(
+export function createServer(): McpServer {
+    const server = new McpServer({
+        name: 'documentdb-mcp-server',
+        version: '0.1.0'
+    });
+
+    // Register database tools
+    registerDatabaseTools(server);
+    
+    // Register collection tools
+    registerCollectionTools(server);
+    
+    // Register document tools
+    registerDocumentTools(server);
+    
+    return server;
+}
+
+/**
+ * Register database-related tools
+ */
+function registerDatabaseTools(server: McpServer): void {
+    // List databases tool
+    server.registerTool("list_databases",
         {
-            name: 'documentdb-mcp-server',
-            version: '0.1.0',
+            title: "List Databases",
+            description: "List all databases in the DocumentDB instance"
         },
-        {
-            capabilities: {
-                tools: {},
-            },
+        async () => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const adminDb = client.db().admin();
+                const databaseInfos = await adminDb.listDatabases();
+                const databaseNames = databaseInfos.databases.map((db) => db.name);
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(databaseNames, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
         }
     );
 
-    // All available tools
-    const tools = [
-        // Database tools
-        listDatabasesTool,
-        dbStatsTool,
-        getDbInfoTool,
-        dropDatabaseTool,
+    // Database stats tool
+    server.registerTool("db_stats",
+        {
+            title: "Database Statistics",
+            description: "Get detailed statistics about a database's size and storage usage",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database")
+            }
+        },
+        async ({ db_name }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const db = client.db(db_name);
+                const stats = await db.stats();
 
-        // Collection tools
-        collectionStatsTool,
-        renameCollectionTool,
-        dropCollectionTool,
-        sampleDocumentsTool,
-
-        // Document tools
-        findDocumentsTool,
-        countDocumentsTool,
-        insertDocumentTool,
-        insertManyTool,
-        updateDocumentTool,
-        deleteDocumentTool,
-        aggregateTool,
-
-        // Index tools
-        createIndexTool,
-        listIndexesTool,
-        dropIndexTool,
-        indexStatsTool,
-        currentOpsTool,
-
-        // Workflow tools
-        optimizeFindQueryTool,
-        optimizeAggregateQueryTool,
-        listDatabasesForGenerationTool,
-        getDbInfoForGenerationTool,
-    ];
-
-    // Tool handlers mapping
-    const toolHandlers = new Map([
-        // Database handlers
-        ['list_databases', listDatabases],
-        ['db_stats', dbStats],
-        ['get_db_info', getDbInfo],
-        ['drop_database', dropDatabase],
-
-        // Collection handlers
-        ['collection_stats', collectionStats],
-        ['rename_collection', renameCollection],
-        ['drop_collection', dropCollection],
-        ['sample_documents', sampleDocuments],
-
-        // Document handlers
-        ['find_documents', findDocuments],
-        ['count_documents', countDocuments],
-        ['insert_document', insertDocument],
-        ['insert_many', insertMany],
-        ['update_document', updateDocument],
-        ['delete_document', deleteDocument],
-        ['aggregate', aggregate],
-
-        // Index handlers
-        ['create_index', createIndex],
-        ['list_indexes', listIndexes],
-        ['drop_index', dropIndex],
-        ['index_stats', indexStats],
-        ['current_ops', currentOps],
-
-        // Workflow handlers
-        ['optimize_find_query', optimizeFindQuery],
-        ['optimize_aggregate_query', optimizeAggregateQuery],
-        ['list_databases_for_generation', listDatabasesForGeneration],
-        ['get_db_info_for_generation', getDbInfoForGeneration],
-    ]);
-
-    // Register list tools handler
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
-        return {
-            tools,
-        };
-    });
-
-    // Register call tool handler
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        const toolName = request.params.name;
-        const handler = toolHandlers.get(toolName);
-
-        if (!handler) {
-            throw new Error(`Unknown tool: ${toolName}`);
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(stats, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
         }
+    );
 
-        return await handler(request);
-    });
+    // Get database info tool
+    server.registerTool("get_db_info",
+        {
+            title: "Get Database Info",
+            description: "Get database information including all collections and their document counts",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database")
+            }
+        },
+        async ({ db_name }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const db = client.db(db_name);
+                const collections = await db.listCollections().toArray();
+                
+                const collectionInfos = await Promise.all(
+                    collections.map(async (collection) => {
+                        try {
+                            const count = await db.collection(collection.name).estimatedDocumentCount();
+                            return { name: collection.name, count };
+                        } catch (error) {
+                            return { name: collection.name, count: 0, error: error instanceof Error ? error.message : String(error) };
+                        }
+                    })
+                );
 
-    return server;
+                const dbInfo = {
+                    database_name: db_name,
+                    collections: collectionInfos,
+                };
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(dbInfo, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+
+    // Drop database tool
+    server.registerTool("drop_database",
+        {
+            title: "Drop Database",
+            description: "Drop a database and all its collections",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database to drop")
+            }
+        },
+        async ({ db_name }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const db = client.db(db_name);
+                const result = await db.dropDatabase();
+
+                const successResponse = {
+                    success: true,
+                    message: `Database '${db_name}' dropped successfully`,
+                    data: result,
+                };
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(successResponse, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register collection-related tools
+ */
+function registerCollectionTools(server: McpServer): void {
+    // Collection stats tool
+    server.registerTool("collection_stats",
+        {
+            title: "Collection Statistics",
+            description: "Get detailed statistics about a collection's size and storage usage",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database"),
+                collection_name: z.string().describe("Name of the collection")
+            }
+        },
+        async ({ db_name, collection_name }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const db = client.db(db_name);
+                const stats = await db.command({ collStats: collection_name });
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(stats, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+
+    // Sample documents tool
+    server.registerTool("sample_documents",
+        {
+            title: "Sample Documents",
+            description: "Retrieve sample documents from specific collection. Useful for understanding data schema and query generation.",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database"),
+                collection_name: z.string().describe("Name of the collection"),
+                sample_size: z.number().default(10).describe("Number of documents to sample")
+            }
+        },
+        async ({ db_name, collection_name, sample_size = 10 }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const collection = client.db(db_name).collection(collection_name);
+                const pipeline = [{ $sample: { size: sample_size } }];
+                const documents = await collection.aggregate(pipeline).toArray();
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(documents, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+}
+
+/**
+ * Register document-related tools
+ */
+function registerDocumentTools(server: McpServer): void {
+    // Find documents tool
+    server.registerTool("find_documents",
+        {
+            title: "Find Documents",
+            description: "Find documents in a collection with optional query, projection, sort, limit, and skip",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database"),
+                collection_name: z.string().describe("Name of the collection"),
+                query: z.record(z.unknown()).default({}).describe("MongoDB query filter (JSON object)"),
+                limit: z.number().default(100).describe("Maximum number of documents to return")
+            }
+        },
+        async ({ db_name, collection_name, query = {}, limit = 100 }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const collection = client.db(db_name).collection(collection_name);
+
+                const documents = await collection.find(query).limit(limit).toArray();
+                const totalCount = await collection.countDocuments(query);
+
+                const response = {
+                    documents,
+                    total_count: totalCount,
+                    limit,
+                    returned_count: documents.length,
+                };
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(response, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+
+    // Count documents tool
+    server.registerTool("count_documents",
+        {
+            title: "Count Documents",
+            description: "Count documents in a collection matching a query",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database"),
+                collection_name: z.string().describe("Name of the collection"),
+                query: z.record(z.unknown()).default({}).describe("MongoDB query filter (JSON object)")
+            }
+        },
+        async ({ db_name, collection_name, query = {} }) => {
+            try {
+                const { getDocumentDBContext } = await import('./context/documentdb');
+                const { client } = getDocumentDBContext();
+                const collection = client.db(db_name).collection(collection_name);
+                const count = await collection.countDocuments(query);
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ count, query }, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
 }
 
 /**
