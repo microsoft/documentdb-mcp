@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { parseParam } from './utils/paramParser';
 
 /**
  * Register connection-related tools
@@ -17,13 +18,14 @@ export function registerConnectionTools(server: McpServer): void {
             description: "Connect to a MongoDB instance with a connection string",
             inputSchema: {
                 connection_string: z.string().describe("MongoDB connection string (e.g., mongodb://localhost:27017)"),
-                test_connection: z.boolean().default(true).describe("Test the connection after connecting")
+                test_connection: z.union([z.boolean(), z.string()]).default(true).describe("Test the connection after connecting (boolean or boolean-like string)")
             }
         },
-        async ({ connection_string, test_connection = true }) => {
+    async ({ connection_string, test_connection = true }) => {
             try {
+        const { value: testConn } = parseParam<boolean>(test_connection, 'boolean', { fieldName: 'test_connection' });
                 const { connectToDocumentDB } = await import('../context/documentdb');
-                const result = await connectToDocumentDB(connection_string, test_connection);
+        const result = await connectToDocumentDB(connection_string, testConn);
 
                 return {
                     content: [

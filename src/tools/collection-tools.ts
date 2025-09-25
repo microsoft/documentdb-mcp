@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { parseParam } from './utils/paramParser';
 
 /**
  * Register collection-related tools
@@ -49,6 +50,85 @@ export function registerCollectionTools(server: McpServer): void {
         }
     );
 
+
+    // Rename collection tool
+    server.registerTool("rename_collection",
+        {
+            title: "Rename Collection",
+            description: "Rename a collection",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database"),
+                collection_name: z.string().describe("Name of the collection to rename"),
+                new_collection_name: z.string().describe("New name for the collection")
+            }
+        },
+        async ({ db_name, collection_name, new_collection_name }) => {
+            try {
+                const { getDocumentDBContext } = await import('../context/documentdb');
+                const { client } = getDocumentDBContext();
+                const db = client.db(db_name);
+                const collection = db.collection(collection_name);
+                await collection.rename(new_collection_name, { dropTarget: false });
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ message: "Collection renamed successfully" }, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+
+    // Drop collection tool
+    server.registerTool("drop_collection",
+        {
+            title: "Drop Collection",
+            description: "Drop a collection from a database",
+            inputSchema: {
+                db_name: z.string().describe("Name of the database"),
+                collection_name: z.string().describe("Name of the collection to drop")
+            }
+        },
+        async ({ db_name, collection_name }) => {
+            try {
+                const { getDocumentDBContext } = await import('../context/documentdb');
+                const { client } = getDocumentDBContext();
+                const db = client.db(db_name);
+                await db.dropCollection(collection_name);
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ message: "Collection dropped successfully" }, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+    );
+
     // Sample documents tool
     server.registerTool("sample_documents",
         {
@@ -57,15 +137,17 @@ export function registerCollectionTools(server: McpServer): void {
             inputSchema: {
                 db_name: z.string().describe("Name of the database"),
                 collection_name: z.string().describe("Name of the collection"),
-                sample_size: z.number().default(10).describe("Number of documents to sample")
+                sample_size: z.union([z.number(), z.string()]).default(10).describe("Number of documents to sample (number or numeric string)")
             }
         },
         async ({ db_name, collection_name, sample_size = 10 }) => {
             try {
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
+                // sample_size may arrive as string in HTTP mode; normalize
+                const { value: normalizedSize } = parseParam<number>(sample_size, 'int', { fieldName: 'sample_size', nonNegative: true, defaultValue: 10 });
                 const collection = client.db(db_name).collection(collection_name);
-                const pipeline = [{ $sample: { size: sample_size } }];
+                const pipeline = [{ $sample: { size: normalizedSize } }];
                 const documents = await collection.aggregate(pipeline).toArray();
 
                 return {

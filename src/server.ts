@@ -19,6 +19,10 @@ import { registerDocumentTools } from './tools/document-tools.js';
 import { registerIndexTools } from './tools/index-tools.js';
 import { registerConnectionTools } from './tools/connection-tools.js';
 import { registerWorkflowTools } from './tools/workflow-tools.js';
+import { registerCollectionResources } from './resources/collection-resources.js';
+import { registerDatabaseResources } from './resources/database-resources.js';
+import { registerOtherResources } from './resources/other-resources.js';
+import { registerIndexAdvisorPrompts } from './prompts/index-advisor-prompts.js';
 
 /**
  * Create and configure the MCP server
@@ -29,23 +33,31 @@ export function createServer(): McpServer {
         version: '0.1.0'
     });
 
+    // Register Tools
     // Register connection tools
     registerConnectionTools(server);
-
     // Register database tools
     registerDatabaseTools(server);
-    
     // Register collection tools
     registerCollectionTools(server);
-    
     // Register document tools
     registerDocumentTools(server);
-
     // Register index tools
     registerIndexTools(server);
-
     // Register workflow tools
     registerWorkflowTools(server);
+
+    // Register Resources
+    // Register collection resources
+    registerCollectionResources(server);
+    // Register database resources
+    registerDatabaseResources(server);
+    // Register other resources
+    registerOtherResources(server);
+
+    // Register index advisor related prompts
+    registerIndexAdvisorPrompts(server);
+
     
     return server;
 }

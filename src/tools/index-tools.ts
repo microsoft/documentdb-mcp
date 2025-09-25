@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { parseParam } from './utils/paramParser';
 
 /**
  * Register index-related tools
@@ -18,21 +19,23 @@ export function registerIndexTools(server: McpServer): void {
             inputSchema: {
                 db_name: z.string().describe("Name of the database"),
                 collection_name: z.string().describe("Name of the collection"),
-                keys: z.record(z.unknown()).describe("Index key specification (JSON object)"),
-                options: z.record(z.unknown()).default({}).describe("Index options (e.g., {unique: true, name: \"custom_name\"})")
+                keys: z.union([z.record(z.unknown()), z.string()]).describe("Dictionary defining the index (e.g., {'field': 1} for ascending)"),
+                options: z.union([z.record(z.unknown()), z.string()]).default({}).describe("Index options (e.g., {unique: true, name: 'idx'})")
             }
         },
-        async ({ db_name, collection_name, keys, options = {} }) => {
+    async ({ db_name, collection_name, keys, options = {} }) => {
             try {
-                const { getDocumentDBContext } = await import('../context/documentdb');
-                const { client } = getDocumentDBContext();
-                const collection = client.db(db_name).collection(collection_name);
-                const result = await collection.createIndex(keys as any, options as any);
+        const { value: parsedKeys } = parseParam<Record<string, any>>(keys, 'object', { fieldName: 'keys' });
+        const { value: parsedOptions } = parseParam<Record<string, any>>(options, 'object', { fieldName: 'options' });
+        const { getDocumentDBContext } = await import('../context/documentdb');
+        const { client } = getDocumentDBContext();
+        const collection = client.db(db_name).collection(collection_name);
+        const result = await collection.createIndex(parsedKeys as any, parsedOptions as any);
 
                 const response = {
                     index_name: result,
-                    keys,
-                    options,
+                    keys: parsedKeys,
+                    options: parsedOptions,
                 };
 
                 return {
@@ -67,11 +70,11 @@ export function registerIndexTools(server: McpServer): void {
                 collection_name: z.string().describe("Name of the collection")
             }
         },
-        async ({ db_name, collection_name }) => {
+    async ({ db_name, collection_name }) => {
             try {
-                const { getDocumentDBContext } = await import('../context/documentdb');
-                const { client } = getDocumentDBContext();
-                const collection = client.db(db_name).collection(collection_name);
+        const { getDocumentDBContext } = await import('../context/documentdb');
+        const { client } = getDocumentDBContext();
+        const collection = client.db(db_name).collection(collection_name);
                 const indexes = await collection.listIndexes().toArray();
 
                 const response = {
@@ -112,12 +115,12 @@ export function registerIndexTools(server: McpServer): void {
                 index_name: z.string().describe("Name of the index to drop")
             }
         },
-        async ({ db_name, collection_name, index_name }) => {
+    async ({ db_name, collection_name, index_name }) => {
             try {
-                const { getDocumentDBContext } = await import('../context/documentdb');
-                const { client } = getDocumentDBContext();
-                const collection = client.db(db_name).collection(collection_name);
-                const result = await collection.dropIndex(index_name);
+        const { getDocumentDBContext } = await import('../context/documentdb');
+        const { client } = getDocumentDBContext();
+        const collection = client.db(db_name).collection(collection_name);
+        const result = await collection.dropIndex(index_name);
 
                 const successResponse = {
                     success: true,
@@ -157,15 +160,12 @@ export function registerIndexTools(server: McpServer): void {
                 collection_name: z.string().describe("Name of the collection")
             }
         },
-        async ({ db_name, collection_name }) => {
+    async ({ db_name, collection_name }) => {
             try {
-                const { getDocumentDBContext } = await import('../context/documentdb');
-                const { client } = getDocumentDBContext();
-                const db = client.db(db_name);
-                const stats = await db.command({
-                    collStats: collection_name,
-                    indexDetails: true,
-                });
+        const { getDocumentDBContext } = await import('../context/documentdb');
+        const { client } = getDocumentDBContext();
+        const collection = client.db(db_name).collection(collection_name);
+                const stats = await collection.aggregate([{ $indexStats: {} }]).toArray();
 
                 return {
                     content: [
@@ -189,39 +189,34 @@ export function registerIndexTools(server: McpServer): void {
         }
     );
 
-    // Current operations tool
+    // Current operations tool (enhanced with optional filter)
     server.registerTool("current_ops",
         {
             title: "Current Operations",
-            description: "Get current operations running on the database",
+            description: "Get information about current MongoDB operations",
             inputSchema: {
-                db_name: z.string().describe("Name of the database")
+                ops: z.union([z.record(z.unknown()), z.string(), z.null()]).optional().describe("Optional filter to narrow down the operations returned")
             }
         },
-        async ({ db_name }) => {
+        async ({ ops = null }) => {
             try {
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
-                const db = client.db(db_name);
-                const operations = await db.admin().command({ currentOp: 1 });
-
+                let filter: Record<string, any> | undefined = undefined;
+                if (ops !== null && ops !== undefined) {
+                    const { value } = parseParam<Record<string, any>>(ops, 'object', { fieldName: 'ops' });
+                    filter = value;
+                }
+                const command: Record<string, any> = { currentOp: true };
+                if (filter) Object.assign(command, filter);
+                const response = await client.db('admin').command(command as any);
                 return {
-                    content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify(operations, null, 2),
-                        },
-                    ],
+                    content: [ { type: 'text', text: JSON.stringify(response, null, 2) } ]
                 };
             } catch (error) {
                 return {
-                    content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
-                        },
-                    ],
-                    isError: true,
+                    content: [ { type: 'text', text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2) } ],
+                    isError: true
                 };
             }
         }
