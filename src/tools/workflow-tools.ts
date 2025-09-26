@@ -5,7 +5,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam } from './utils/paramParser';
+import { parseParam, parseParams } from './utils/paramParser';
+import { analyzeFindExplain } from './utils/explainAnalyzer';
 
 /**
  * Register workflow-related tools
@@ -15,40 +16,63 @@ export function registerWorkflowTools(server: McpServer): void {
     server.registerTool("optimize_find_query",
         {
             title: "Optimize Find Query",
-            description: "Optimize a find query by analyzing index usage and suggesting improvements",
+            description: "Provide all the information needed for optimizing find query, including execution plan with metrics, index information and collection statistics. Support sort, projection, limit, and skip.",
             inputSchema: {
                 db_name: z.string().describe("Name of the database"),
                 collection_name: z.string().describe("Name of the collection"),
                 query: z.union([z.record(z.unknown()), z.string()]).default({}).describe("Query filter in MongoDB style"),
+                sort: z.union([z.record(z.number()), z.string()]).optional().describe("Sort specification in MongoDB style"),
+                projection: z.union([z.record(z.number()), z.string()]).optional().describe("Projection specification in MongoDB style"),
+                limit: z.union([z.number(), z.string()]).optional().describe("Limit the number of documents returned (number or numeric string)"),
+                skip: z.union([z.number(), z.string()]).optional().describe("Number of documents to skip (number or numeric string)")
             }
         },
-        async ({ db_name, collection_name, query }) => {
+        async ({ db_name, collection_name, query, sort, projection, limit, skip }) => {
             try {
+                // Batch parse parameters with new optional semantics
+                const parsed = parseParams([
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query', defaultValue: {} } },
+                    { raw: sort, expected: 'object', outKey: 'sort', options: { fieldName: 'sort', optional: true, treatEmptyObjectAsUndefined: true } },
+                    { raw: projection, expected: 'object', outKey: 'projection', options: { fieldName: 'projection', optional: true, treatEmptyObjectAsUndefined: true } },
+                    { raw: limit, expected: 'int', outKey: 'limit', options: { fieldName: 'limit', optional: true, nonNegative: true } },
+                    { raw: skip, expected: 'int', outKey: 'skip', options: { fieldName: 'skip', optional: true, nonNegative: true } },
+                ]);
+
+                const parsedQuery = parsed.query || {};
+                const findOptions: any = {};
+                if (parsed.sort !== undefined) findOptions.sort = parsed.sort;
+                if (parsed.projection !== undefined) findOptions.projection = parsed.projection;
+                if (parsed.limit !== undefined) findOptions.limit = parsed.limit;
+                if (parsed.skip !== undefined) findOptions.skip = parsed.skip;
+
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
-                const { value: parsedQuery } = parseParam<Record<string, any>>(query, 'object', { fieldName: 'query', defaultValue: {} });
 
-                // Get query execution plan
-                const explainResult = await collection.find(parsedQuery).explain('executionStats');
+                const explainResult = await collection
+                    .find(parsedQuery, findOptions)
+                    .explain('executionStats');
+
+                // Return both the explain result and normalized options for transparency
+                const analysis = analyzeFindExplain(explainResult, parsedQuery, findOptions);
+                const response = {
+                    query: parsedQuery,
+                    applied_options: findOptions,
+                    analysis,
+                    explain: explainResult
+                };
 
                 return {
                     content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify(explainResult, null, 2),
-                        },
-                    ],
+                        { type: 'text', text: JSON.stringify(response, null, 2) }
+                    ]
                 };
             } catch (error) {
                 return {
                     content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
-                        },
+                        { type: 'text', text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2) }
                     ],
-                    isError: true,
+                    isError: true
                 };
             }
         }
