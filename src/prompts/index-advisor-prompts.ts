@@ -132,8 +132,7 @@ export function registerIndexAdvisorPrompts(server: McpServer) {
 		'find_query_optimizer',
 		{
 			title: 'Find Query Optimizer',
-			description:
-				'Analyze and optimize a MongoDB find query using real execution stats and index recommendations.',
+			description: 'Analyze and optimize a MongoDB find query using real execution stats and index recommendations.',
 		},
 		async () => {
 			return {
@@ -154,8 +153,7 @@ export function registerIndexAdvisorPrompts(server: McpServer) {
 		'aggregate_query_optimizer',
 		{
 			title: 'Aggregate Query Optimizer',
-			description:
-				'Analyze and optimize a MongoDB aggregation pipeline with execution stats and stage/index recommendations.',
+			description: 'Analyze and optimize a MongoDB aggregation pipeline with execution stats and stage/index recommendations.',
 		},
 		async () => {
 			return {
@@ -176,8 +174,7 @@ export function registerIndexAdvisorPrompts(server: McpServer) {
 		'count_query_optimizer',
 		{
 			title: 'Count Query Optimizer',
-			description:
-				'Analyze and optimize a MongoDB count query focusing on index / index-only scan opportunities.',
+			description: 'Analyze and optimize a MongoDB count query focusing on index / index-only scan opportunities.',
 		},
 		async () => {
 			return {

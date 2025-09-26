@@ -56,9 +56,7 @@ export function registerCollectionResources(server: McpServer) {
 					fieldTypes[k].add(t);
 				}
 			}
-			const schema = Object.fromEntries(
-				Object.entries(fieldTypes).map(([k, set]) => [k, Array.from(set)]),
-			);
+			const schema = Object.fromEntries(Object.entries(fieldTypes).map(([k, set]) => [k, Array.from(set)]));
 			return {
 				contents: [
 					{

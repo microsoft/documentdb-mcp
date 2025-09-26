@@ -75,15 +75,7 @@ function walkStages(
 		acc.filterPushed = false;
 	}
 	// Explore common child container fields
-	const childKeys = [
-		'inputStage',
-		'inputStages',
-		'executionStages',
-		'shards',
-		'winningPlan',
-		'innerStage',
-		'outerStage',
-	];
+	const childKeys = ['inputStage', 'inputStages', 'executionStages', 'shards', 'winningPlan', 'innerStage', 'outerStage'];
 	for (const key of childKeys) {
 		const child = (node as any)[key];
 		if (!child) continue;

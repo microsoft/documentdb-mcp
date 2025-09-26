@@ -18,9 +18,7 @@ async function main(): Promise<void> {
 	} else if (config.transport === 'stdio') {
 		console.error('Server will run on stdio transport');
 	} else {
-		console.error(
-			`Warning: Unsupported transport '${config.transport}', falling back to stdio`,
-		);
+		console.error(`Warning: Unsupported transport '${config.transport}', falling back to stdio`);
 	}
 
 	try {

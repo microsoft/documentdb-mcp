@@ -34,14 +34,8 @@ export function registerWorkflowTools(server: McpServer): void {
 					.union([z.record(z.number()), z.string()])
 					.optional()
 					.describe('Projection specification in MongoDB style'),
-				limit: z
-					.union([z.number(), z.string()])
-					.optional()
-					.describe('Limit the number of documents returned (number or numeric string)'),
-				skip: z
-					.union([z.number(), z.string()])
-					.optional()
-					.describe('Number of documents to skip (number or numeric string)'),
+				limit: z.union([z.number(), z.string()]).optional().describe('Limit the number of documents returned (number or numeric string)'),
+				skip: z.union([z.number(), z.string()]).optional().describe('Number of documents to skip (number or numeric string)'),
 			},
 		},
 		async ({ db_name, collection_name, query, sort, projection, limit, skip }) => {
@@ -99,14 +93,10 @@ export function registerWorkflowTools(server: McpServer): void {
 				const { client } = getDocumentDBContext();
 				const collection = client.db(db_name).collection(collection_name);
 
-				const explainResult = await collection
-					.find(parsedQuery, findOptions)
-					.explain('executionStats');
+				const explainResult = await collection.find(parsedQuery, findOptions).explain('executionStats');
 
 				const indexesStats = await collection.aggregate([{ $indexStats: {} }]).toArray();
-				const collectionStats = await client
-					.db(db_name)
-					.command({ collStats: collection_name });
+				const collectionStats = await client.db(db_name).command({ collStats: collection_name });
 
 				// Compute metrics-only analysis from explain result
 				const analysis = analyzeFindExplain(explainResult);
@@ -128,11 +118,7 @@ export function registerWorkflowTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -176,11 +162,7 @@ export function registerWorkflowTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -194,22 +176,17 @@ export function registerWorkflowTools(server: McpServer): void {
 		'get_db_info_for_generation',
 		{
 			title: 'Get Database Info for Generation',
-			description:
-				'Get detailed database information for query generation, including collections, sample documents and schema',
+			description: 'Get detailed database information for query generation, including collections, sample documents and schema',
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 				include_sample_documents: z
 					.union([z.boolean(), z.string()])
 					.default(true)
-					.describe(
-						'Include sample documents from collections (boolean or boolean-like string)',
-					),
+					.describe('Include sample documents from collections (boolean or boolean-like string)'),
 				sample_size: z
 					.union([z.number(), z.string()])
 					.default(3)
-					.describe(
-						'Number of sample documents per collection (number or numeric string)',
-					),
+					.describe('Number of sample documents per collection (number or numeric string)'),
 			},
 		},
 		async ({ db_name, include_sample_documents = true, sample_size = 3 }) => {
@@ -218,14 +195,10 @@ export function registerWorkflowTools(server: McpServer): void {
 				const { client } = getDocumentDBContext();
 				const db = client.db(db_name);
 				const collections = await db.listCollections().toArray();
-				const { value: includeSamples } = parseParam<boolean>(
-					include_sample_documents,
-					'boolean',
-					{
-						fieldName: 'include_sample_documents',
-						defaultValue: true,
-					},
-				);
+				const { value: includeSamples } = parseParam<boolean>(include_sample_documents, 'boolean', {
+					fieldName: 'include_sample_documents',
+					defaultValue: true,
+				});
 				const { value: sampleSize } = parseParam<number>(sample_size, 'int', {
 					fieldName: 'sample_size',
 					nonNegative: true,
@@ -235,19 +208,12 @@ export function registerWorkflowTools(server: McpServer): void {
 				const collectionInfos = await Promise.all(
 					collections.map(async (collection) => {
 						try {
-							const count = await db
-								.collection(collection.name)
-								.estimatedDocumentCount();
+							const count = await db.collection(collection.name).estimatedDocumentCount();
 							let sampleDocuments: any[] = [];
 
 							if (includeSamples && count > 0) {
-								const pipeline = [
-									{ $sample: { size: Math.min(sampleSize, count) } },
-								];
-								sampleDocuments = await db
-									.collection(collection.name)
-									.aggregate(pipeline)
-									.toArray();
+								const pipeline = [{ $sample: { size: Math.min(sampleSize, count) } }];
+								sampleDocuments = await db.collection(collection.name).aggregate(pipeline).toArray();
 							}
 
 							return {
@@ -284,11 +250,7 @@ export function registerWorkflowTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,

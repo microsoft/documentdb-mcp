@@ -3,24 +3,19 @@ import { getDocumentDBContext } from '../context/documentdb.js';
 
 export function registerOtherResources(server: McpServer) {
 	// server_status
-	server.registerResource(
-		'server_status',
-		'server://status',
-		{ title: 'Server Status', description: 'Server status information' },
-		async () => {
-			const { client } = getDocumentDBContext();
-			const status = await client.db().admin().serverStatus();
-			return {
-				contents: [
-					{
-						uri: 'server://status',
-						mimeType: 'application/json',
-						text: JSON.stringify(status, null, 2),
-					},
-				],
-			} as any;
-		},
-	);
+	server.registerResource('server_status', 'server://status', { title: 'Server Status', description: 'Server status information' }, async () => {
+		const { client } = getDocumentDBContext();
+		const status = await client.db().admin().serverStatus();
+		return {
+			contents: [
+				{
+					uri: 'server://status',
+					mimeType: 'application/json',
+					text: JSON.stringify(status, null, 2),
+				},
+			],
+		} as any;
+	});
 
 	// replica_status
 	server.registerResource(
@@ -46,11 +41,7 @@ export function registerOtherResources(server: McpServer) {
 						{
 							uri: 'server://replica_status',
 							mimeType: 'application/json',
-							text: JSON.stringify(
-								{ error: e instanceof Error ? e.message : String(e) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: e instanceof Error ? e.message : String(e) }, null, 2),
 						},
 					],
 				} as any;
@@ -76,9 +67,7 @@ export function registerOtherResources(server: McpServer) {
 				opcounters: status.opcounters,
 				connections: status.connections,
 				mem: status.mem,
-				wiredTiger: status.wiredTiger?.cache
-					? { cache: status.wiredTiger.cache }
-					: undefined,
+				wiredTiger: status.wiredTiger?.cache ? { cache: status.wiredTiger.cache } : undefined,
 			};
 			return {
 				contents: [

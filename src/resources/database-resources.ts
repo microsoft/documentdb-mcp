@@ -3,26 +3,21 @@ import { getDocumentDBContext } from '../context/documentdb.js';
 
 export function registerDatabaseResources(server: McpServer) {
 	// databases (list all)
-	server.registerResource(
-		'databases',
-		'dbs://list',
-		{ title: 'Databases', description: 'List of all accessible databases' },
-		async () => {
-			const { client } = getDocumentDBContext();
-			const admin = client.db().admin();
-			const info = await admin.listDatabases();
-			const names = info.databases.map((d) => d.name);
-			return {
-				contents: [
-					{
-						uri: 'dbs://list',
-						mimeType: 'application/json',
-						text: JSON.stringify(names, null, 2),
-					},
-				],
-			} as any;
-		},
-	);
+	server.registerResource('databases', 'dbs://list', { title: 'Databases', description: 'List of all accessible databases' }, async () => {
+		const { client } = getDocumentDBContext();
+		const admin = client.db().admin();
+		const info = await admin.listDatabases();
+		const names = info.databases.map((d) => d.name);
+		return {
+			contents: [
+				{
+					uri: 'dbs://list',
+					mimeType: 'application/json',
+					text: JSON.stringify(names, null, 2),
+				},
+			],
+		} as any;
+	});
 
 	// database_users template: database_users/{db}
 	server.registerResource(

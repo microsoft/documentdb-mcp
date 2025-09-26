@@ -42,11 +42,7 @@ export function registerCollectionTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -78,11 +74,7 @@ export function registerCollectionTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ message: 'Collection renamed successfully' },
-								null,
-								2,
-							),
+							text: JSON.stringify({ message: 'Collection renamed successfully' }, null, 2),
 						},
 					],
 				};
@@ -91,11 +83,7 @@ export function registerCollectionTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -125,11 +113,7 @@ export function registerCollectionTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ message: 'Collection dropped successfully' },
-								null,
-								2,
-							),
+							text: JSON.stringify({ message: 'Collection dropped successfully' }, null, 2),
 						},
 					],
 				};
@@ -138,11 +122,7 @@ export function registerCollectionTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -156,15 +136,11 @@ export function registerCollectionTools(server: McpServer): void {
 		'sample_documents',
 		{
 			title: 'Sample Documents',
-			description:
-				'Retrieve sample documents from specific collection. Useful for understanding data schema and query generation.',
+			description: 'Retrieve sample documents from specific collection. Useful for understanding data schema and query generation.',
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 				collection_name: z.string().describe('Name of the collection'),
-				sample_size: z
-					.union([z.number(), z.string()])
-					.default(10)
-					.describe('Number of documents to sample (number or numeric string)'),
+				sample_size: z.union([z.number(), z.string()]).default(10).describe('Number of documents to sample (number or numeric string)'),
 			},
 		},
 		async ({ db_name, collection_name, sample_size = 10 }) => {
@@ -197,11 +173,7 @@ export function registerCollectionTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,

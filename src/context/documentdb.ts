@@ -180,9 +180,7 @@ export async function closeDocumentDBContext(): Promise<void> {
  */
 export function getDocumentDBContext(): DocumentDBContext {
 	if (!mongoClient) {
-		throw new Error(
-			'DocumentDB context not initialized. Call initializeDocumentDBContext() or use connect_mongodb tool first.',
-		);
+		throw new Error('DocumentDB context not initialized. Call initializeDocumentDBContext() or use connect_mongodb tool first.');
 	}
 	return {
 		client: mongoClient,

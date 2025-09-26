@@ -161,8 +161,7 @@ export async function runHttpServer(): Promise<void> {
 					jsonrpc: '2.0',
 					error: {
 						code: -32000,
-						message:
-							'Bad Request: No valid session ID provided or not an initialization request',
+						message: 'Bad Request: No valid session ID provided or not an initialization request',
 					},
 					id: null,
 				});
@@ -311,9 +310,7 @@ export async function runSseServer(): Promise<void> {
 	});
 
 	const server = app.listen(config.port, config.host, () => {
-		console.error(
-			`DocumentDB MCP Server (SSE) running at http://${config.host}:${config.port}/sse`,
-		);
+		console.error(`DocumentDB MCP Server (SSE) running at http://${config.host}:${config.port}/sse`);
 		console.error('SSE endpoints: GET /sse, POST /sse/messages?sessionId=...');
 	});
 

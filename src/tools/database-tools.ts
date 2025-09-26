@@ -38,11 +38,7 @@ export function registerDatabaseTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -81,11 +77,7 @@ export function registerDatabaseTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -99,8 +91,7 @@ export function registerDatabaseTools(server: McpServer): void {
 		'get_db_info',
 		{
 			title: 'Get Database Info',
-			description:
-				'Get database information including all collections and their document counts',
+			description: 'Get database information including all collections and their document counts',
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 			},
@@ -115,9 +106,7 @@ export function registerDatabaseTools(server: McpServer): void {
 				const collectionInfos = await Promise.all(
 					collections.map(async (collection) => {
 						try {
-							const count = await db
-								.collection(collection.name)
-								.estimatedDocumentCount();
+							const count = await db.collection(collection.name).estimatedDocumentCount();
 							return { name: collection.name, count };
 						} catch (error) {
 							return {
@@ -147,11 +136,7 @@ export function registerDatabaseTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -196,11 +181,7 @@ export function registerDatabaseTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,

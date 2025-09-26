@@ -24,11 +24,7 @@ export interface ParseResult<T = any> {
 }
 
 /** Core parsing logic. */
-export function parseParam<T = any>(
-	raw: any,
-	expected: ExpectedType,
-	options: ParseOptions = {},
-): ParseResult<T> {
+export function parseParam<T = any>(raw: any, expected: ExpectedType, options: ParseOptions = {}): ParseResult<T> {
 	const {
 		allowEmptyStringAsNull = true,
 		defaultValue,
@@ -99,8 +95,7 @@ export function parseParam<T = any>(
 				throw new Error(`${fieldName} must be a number`);
 			}
 			if (!Number.isFinite(num)) throw new Error(`${fieldName} must be a finite number`);
-			if (integer && !Number.isInteger(num))
-				throw new Error(`${fieldName} must be an integer`);
+			if (integer && !Number.isInteger(num)) throw new Error(`${fieldName} must be an integer`);
 			if (nonNegative && num < 0) throw new Error(`${fieldName} must be non-negative`);
 			return { value: num as T };
 		}
@@ -116,9 +111,7 @@ export function parseParam<T = any>(
 					}
 					obj = parsed;
 				} catch (e) {
-					throw new Error(
-						`${fieldName} invalid JSON object: ${e instanceof Error ? e.message : String(e)}`,
-					);
+					throw new Error(`${fieldName} invalid JSON object: ${e instanceof Error ? e.message : String(e)}`);
 				}
 			} else {
 				throw new Error(`${fieldName} must be an object`);
@@ -135,13 +128,10 @@ export function parseParam<T = any>(
 			} else if (typeof raw === 'string') {
 				try {
 					const parsed = JSON.parse(raw);
-					if (!Array.isArray(parsed))
-						throw new Error(`${fieldName} must be a JSON array`);
+					if (!Array.isArray(parsed)) throw new Error(`${fieldName} must be a JSON array`);
 					arr = parsed;
 				} catch (e) {
-					throw new Error(
-						`${fieldName} invalid JSON array: ${e instanceof Error ? e.message : String(e)}`,
-					);
+					throw new Error(`${fieldName} invalid JSON array: ${e instanceof Error ? e.message : String(e)}`);
 				}
 			} else {
 				throw new Error(`${fieldName} must be an array`);
@@ -158,10 +148,7 @@ export function parseParam<T = any>(
 }
 
 /** Specialized helper for MongoDB update documents. */
-export function parseUpdate(
-	raw: any,
-	options: ParseOptions = {},
-): ParseResult<Record<string, any>> {
+export function parseUpdate(raw: any, options: ParseOptions = {}): ParseResult<Record<string, any>> {
 	const fieldName = options.fieldName || 'update';
 	const { value: doc } = parseParam<Record<string, any>>(raw, 'object', { fieldName });
 
@@ -171,16 +158,13 @@ export function parseUpdate(
 	const isOperatorStyle = operatorKeys.length > 0;
 
 	if (isOperatorStyle && operatorKeys.length !== keys.length) {
-		throw new Error(
-			`${fieldName} mixes operator keys ($...) with regular fields which is not allowed`,
-		);
+		throw new Error(`${fieldName} mixes operator keys ($...) with regular fields which is not allowed`);
 	}
 
 	if (!isOperatorStyle) {
 		// Replacement document: must NOT contain _id changes (we allow _id presence but won't deep validate)
 		// Basic sanity: object must not be empty
-		if (keys.length === 0)
-			throw new Error(`${fieldName} replacement document must not be empty`);
+		if (keys.length === 0) throw new Error(`${fieldName} replacement document must not be empty`);
 		return { value: doc };
 	}
 
@@ -241,9 +225,7 @@ export function parseParams(spec: ParamSpec[]): Record<string, any> {
 		} else if (item.expected) {
 			value = parseParam(item.raw, item.expected, { ...item.options, fieldName }).value;
 		} else {
-			throw new Error(
-				`Param spec for '${item.outKey}' must provide either 'expected' or 'custom'`,
-			);
+			throw new Error(`Param spec for '${item.outKey}' must provide either 'expected' or 'custom'`);
 		}
 		if (value === undefined && item.options?.optional) continue;
 		result[item.outKey] = value;

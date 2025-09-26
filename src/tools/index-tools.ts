@@ -20,9 +20,7 @@ export function registerIndexTools(server: McpServer): void {
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 				collection_name: z.string().describe('Name of the collection'),
-				keys: z
-					.union([z.record(z.unknown()), z.string()])
-					.describe("Dictionary defining the index (e.g., {'field': 1} for ascending)"),
+				keys: z.union([z.record(z.unknown()), z.string()]).describe("Dictionary defining the index (e.g., {'field': 1} for ascending)"),
 				options: z
 					.union([z.record(z.unknown()), z.string()])
 					.default({})
@@ -50,10 +48,7 @@ export function registerIndexTools(server: McpServer): void {
 				const { getDocumentDBContext } = await import('../context/documentdb');
 				const { client } = getDocumentDBContext();
 				const collection = client.db(db_name).collection(collection_name);
-				const result = await collection.createIndex(
-					parsedKeys as any,
-					parsedOptions as any,
-				);
+				const result = await collection.createIndex(parsedKeys as any, parsedOptions as any);
 
 				const response = {
 					index_name: result,
@@ -74,11 +69,7 @@ export function registerIndexTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -123,11 +114,7 @@ export function registerIndexTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -174,11 +161,7 @@ export function registerIndexTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -218,11 +201,7 @@ export function registerIndexTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
@@ -272,11 +251,7 @@ export function registerIndexTools(server: McpServer): void {
 					content: [
 						{
 							type: 'text',
-							text: JSON.stringify(
-								{ error: error instanceof Error ? error.message : String(error) },
-								null,
-								2,
-							),
+							text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2),
 						},
 					],
 					isError: true,
