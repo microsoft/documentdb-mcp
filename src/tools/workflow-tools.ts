@@ -53,12 +53,18 @@ export function registerWorkflowTools(server: McpServer): void {
                     .find(parsedQuery, findOptions)
                     .explain('executionStats');
 
-                // Return both the explain result and normalized options for transparency
-                const analysis = analyzeFindExplain(explainResult, parsedQuery, findOptions);
+                const indexesStats = await collection.aggregate([{ $indexStats: {} }]).toArray();
+                const collectionStats = await client.db(db_name).command({ collStats: collection_name });
+
+                // Compute metrics-only analysis from explain result
+                const analysis = analyzeFindExplain(explainResult);
                 const response = {
                     query: parsedQuery,
                     applied_options: findOptions,
-                    analysis,
+                    metrics: analysis.metrics,
+                    plan_shape: analysis.shape,
+                    indexes_stats: indexesStats,
+                    collection_stats: collectionStats,
                     explain: explainResult
                 };
 

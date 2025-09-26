@@ -5,7 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam } from './utils/paramParser';
+import { parseParam, parseParams } from './utils/paramParser';
 
 /**
  * Register collection-related tools
@@ -144,8 +144,10 @@ export function registerCollectionTools(server: McpServer): void {
             try {
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
-                // sample_size may arrive as string in HTTP mode; normalize
-                const { value: normalizedSize } = parseParam<number>(sample_size, 'int', { fieldName: 'sample_size', nonNegative: true, defaultValue: 10 });
+                const parsed = parseParams([
+                    { raw: sample_size, expected: 'int', outKey: 'sample_size', options: { fieldName: 'sample_size', nonNegative: true, defaultValue: 10 } }
+                ]);
+                const normalizedSize = parsed.sample_size as number;
                 const collection = client.db(db_name).collection(collection_name);
                 const pipeline = [{ $sample: { size: normalizedSize } }];
                 const documents = await collection.aggregate(pipeline).toArray();

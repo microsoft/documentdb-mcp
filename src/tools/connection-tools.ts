@@ -5,7 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam } from './utils/paramParser';
+import { parseParam, parseParams } from './utils/paramParser';
 
 /**
  * Register connection-related tools
@@ -23,7 +23,10 @@ export function registerConnectionTools(server: McpServer): void {
         },
     async ({ connection_string, test_connection = true }) => {
             try {
-        const { value: testConn } = parseParam<boolean>(test_connection, 'boolean', { fieldName: 'test_connection' });
+        const parsed = parseParams([
+            { raw: test_connection, expected: 'boolean', outKey: 'test_connection', options: { fieldName: 'test_connection', defaultValue: true } }
+        ]);
+        const testConn = parsed.test_connection as boolean;
                 const { connectToDocumentDB } = await import('../context/documentdb');
         const result = await connectToDocumentDB(connection_string, testConn);
 

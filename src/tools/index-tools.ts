@@ -5,7 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam } from './utils/paramParser';
+import { parseParam, parseParams } from './utils/paramParser';
 
 /**
  * Register index-related tools
@@ -23,28 +23,32 @@ export function registerIndexTools(server: McpServer): void {
                 options: z.union([z.record(z.unknown()), z.string()]).default({}).describe("Index options (e.g., {unique: true, name: 'idx'})")
             }
         },
-    async ({ db_name, collection_name, keys, options = {} }) => {
+        async ({ db_name, collection_name, keys, options = {} }) => {
             try {
-        const { value: parsedKeys } = parseParam<Record<string, any>>(keys, 'object', { fieldName: 'keys' });
-        const { value: parsedOptions } = parseParam<Record<string, any>>(options, 'object', { fieldName: 'options' });
+        const parsed = parseParams([
+            { raw: keys, expected: 'object', outKey: 'keys', options: { fieldName: 'keys' } },
+            { raw: options, expected: 'object', outKey: 'options', options: { fieldName: 'options' } }
+        ]);
+        const parsedKeys = parsed.keys as Record<string, any>;
+        const parsedOptions = parsed.options as Record<string, any>;
         const { getDocumentDBContext } = await import('../context/documentdb');
         const { client } = getDocumentDBContext();
         const collection = client.db(db_name).collection(collection_name);
         const result = await collection.createIndex(parsedKeys as any, parsedOptions as any);
 
-                const response = {
-                    index_name: result,
-                    keys: parsedKeys,
-                    options: parsedOptions,
-                };
+        const response = {
+            index_name: result,
+            keys: parsedKeys,
+            options: parsedOptions,
+        };
 
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify(response, null, 2),
-                        },
-                    ],
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify(response, null, 2),
+                },
+            ],
                 };
             } catch (error) {
                 return {
@@ -75,21 +79,21 @@ export function registerIndexTools(server: McpServer): void {
         const { getDocumentDBContext } = await import('../context/documentdb');
         const { client } = getDocumentDBContext();
         const collection = client.db(db_name).collection(collection_name);
-                const indexes = await collection.listIndexes().toArray();
+        const indexes = await collection.listIndexes().toArray();
 
-                const response = {
-                    indexes,
-                    count: indexes.length,
-                };
+        const response = {
+            indexes,
+            count: indexes.length,
+        };
 
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify(response, null, 2),
-                        },
-                    ],
-                };
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify(response, null, 2),
+                },
+            ],
+        };
             } catch (error) {
                 return {
                     content: [
@@ -165,16 +169,16 @@ export function registerIndexTools(server: McpServer): void {
         const { getDocumentDBContext } = await import('../context/documentdb');
         const { client } = getDocumentDBContext();
         const collection = client.db(db_name).collection(collection_name);
-                const stats = await collection.aggregate([{ $indexStats: {} }]).toArray();
+        const stats = await collection.aggregate([{ $indexStats: {} }]).toArray();
 
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify(stats, null, 2),
-                        },
-                    ],
-                };
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify(stats, null, 2),
+                },
+            ],
+        };
             } catch (error) {
                 return {
                     content: [
@@ -202,11 +206,10 @@ export function registerIndexTools(server: McpServer): void {
             try {
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
-                let filter: Record<string, any> | undefined = undefined;
-                if (ops !== null && ops !== undefined) {
-                    const { value } = parseParam<Record<string, any>>(ops, 'object', { fieldName: 'ops' });
-                    filter = value;
-                }
+                const parsed = parseParams([
+                    { raw: ops, expected: 'object', outKey: 'ops', options: { fieldName: 'ops', optional: true, treatEmptyObjectAsUndefined: true } }
+                ]);
+                const filter = parsed.ops as Record<string, any> | undefined;
                 const command: Record<string, any> = { currentOp: true };
                 if (filter) Object.assign(command, filter);
                 const response = await client.db('admin').command(command as any);

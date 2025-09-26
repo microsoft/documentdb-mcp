@@ -87,7 +87,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, query = {} }) => {
             try {
-                const { value: parsedQuery } = parseParam<Record<string, unknown>>(query, 'object', { fieldName: 'query' });
+                const parsed = parseParams([
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } }
+                ]);
+                const parsedQuery = parsed.query as Record<string, unknown>;
 
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
@@ -129,7 +132,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, document }) => {
             try {
-                const { value: doc } = parseParam<Record<string, unknown>>(document, 'object', { fieldName: 'document' });
+                const parsed = parseParams([
+                    { raw: document, expected: 'object', outKey: 'document', options: { fieldName: 'document' } }
+                ]);
+                const doc = parsed.document as Record<string, unknown>;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
@@ -164,7 +170,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, documents }) => {
             try {
-                const { value: docs } = parseParam<any>(documents, 'array', { fieldName: 'documents' });
+                const parsed = parseParams([
+                    { raw: documents, expected: 'array', outKey: 'documents', options: { fieldName: 'documents' } }
+                ]);
+                const docs = parsed.documents as any;
                 // basic validation each element must be object
                 if (!Array.isArray(docs) || docs.some(d => typeof d !== 'object' || d === null || Array.isArray(d))) {
                     throw new Error('documents must be an array of JSON objects');
@@ -206,9 +215,14 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, filter, update, upsert = false }) => {
             try {
-                const { value: parsedFilter } = parseParam<Record<string, unknown>>(filter, 'object', { fieldName: 'filter' });
-                const { value: parsedUpdate } = parseUpdate(update, { fieldName: 'update' });
-                const { value: parsedUpsert } = parseParam<boolean>(upsert, 'boolean', { fieldName: 'upsert' });
+                const parsed = parseParams([
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
+                    { raw: update, outKey: 'update', custom: (r) => parseUpdate(r, { fieldName: 'update' }).value },
+                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } }
+                ]);
+                const parsedFilter = parsed.filter as Record<string, unknown>;
+                const parsedUpdate = parsed.update as Record<string, unknown>;
+                const parsedUpsert = parsed.upsert as boolean;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
@@ -241,9 +255,14 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, filter, update, upsert = false }) => {
             try {
-                const { value: parsedFilter } = parseParam<Record<string, unknown>>(filter, 'object', { fieldName: 'filter' });
-                const { value: parsedUpdate } = parseUpdate(update, { fieldName: 'update' });
-                const { value: parsedUpsert } = parseParam<boolean>(upsert, 'boolean', { fieldName: 'upsert' });
+                const parsed = parseParams([
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
+                    { raw: update, outKey: 'update', custom: (r) => parseUpdate(r, { fieldName: 'update' }).value },
+                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } }
+                ]);
+                const parsedFilter = parsed.filter as Record<string, unknown>;
+                const parsedUpdate = parsed.update as Record<string, unknown>;
+                const parsedUpsert = parsed.upsert as boolean;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
@@ -274,7 +293,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, filter }) => {
             try {
-                const { value: parsedFilter } = parseParam<Record<string, unknown>>(filter, 'object', { fieldName: 'filter' });
+                const parsed = parseParams([
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } }
+                ]);
+                const parsedFilter = parsed.filter as Record<string, unknown>;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
@@ -303,7 +325,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, filter }) => {
             try {
-                const { value: parsedFilter } = parseParam<Record<string, unknown>>(filter, 'object', { fieldName: 'filter' });
+                const parsed = parseParams([
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } }
+                ]);
+                const parsedFilter = parsed.filter as Record<string, unknown>;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
@@ -333,9 +358,13 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, pipeline, allow_disk_use = false }) => {
             try {
-                const { value: parsedPipeline } = parseParam<any>(pipeline, 'array', { fieldName: 'pipeline' });
+                const parsed = parseParams([
+                    { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
+                    { raw: allow_disk_use, expected: 'boolean', outKey: 'allow_disk_use', options: { fieldName: 'allow_disk_use' } }
+                ]);
+                const parsedPipeline = parsed.pipeline as any;
                 if (!Array.isArray(parsedPipeline)) throw new Error('pipeline must be an array');
-                const { value: parsedAllowDisk } = parseParam<boolean>(allow_disk_use, 'boolean', { fieldName: 'allow_disk_use' });
+                const parsedAllowDisk = parsed.allow_disk_use as boolean;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const collection = client.db(db_name).collection(collection_name);
@@ -362,7 +391,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, pipeline }) => {
             try {
-                const { value: parsedPipeline } = parseParam<any>(pipeline, 'array', { fieldName: 'pipeline' });
+                const parsed = parseParams([
+                    { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } }
+                ]);
+                const parsedPipeline = parsed.pipeline as any;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const db = client.db(db_name);
@@ -395,7 +427,10 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, query = {} }) => {
             try {
-                const { value: parsedQuery } = parseParam<Record<string, unknown>>(query, 'object', { fieldName: 'query' });
+                const parsed = parseParams([
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } }
+                ]);
+                const parsedQuery = parsed.query as Record<string, unknown>;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const db = client.db(db_name);
@@ -430,13 +465,16 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, query = {}, sort, limit, projection }) => {
             try {
-                const { value: parsedQuery } = parseParam<Record<string, unknown>>(query, 'object', { fieldName: 'query' });
-                const parsedSort = sort === undefined || sort === null ? undefined : parseParam<Record<string, unknown>>(sort, 'object', { fieldName: 'sort' }).value;
-                const parsedProjection = projection === undefined || projection === null ? undefined : parseParam<Record<string, unknown>>(projection, 'object', { fieldName: 'projection' }).value;
-                let parsedLimit: number | undefined = undefined;
-                if (limit !== undefined && limit !== null) {
-                    parsedLimit = parseParam<number>(limit, 'int', { fieldName: 'limit', nonNegative: true }).value;
-                }
+                const parsed = parseParams([
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query', defaultValue: {} } },
+                    { raw: sort, expected: 'object', outKey: 'sort', options: { fieldName: 'sort', optional: true, treatEmptyObjectAsUndefined: true } },
+                    { raw: projection, expected: 'object', outKey: 'projection', options: { fieldName: 'projection', optional: true, treatEmptyObjectAsUndefined: true } },
+                    { raw: limit, expected: 'int', outKey: 'limit', options: { fieldName: 'limit', optional: true, nonNegative: true } }
+                ]);
+                const parsedQuery = parsed.query as Record<string, unknown>;
+                const parsedSort = parsed.sort as Record<string, unknown> | undefined;
+                const parsedProjection = parsed.projection as Record<string, unknown> | undefined;
+                const parsedLimit = parsed.limit as number | undefined;
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
                 const db = client.db(db_name);
@@ -468,9 +506,14 @@ export function registerDocumentTools(server: McpServer): void {
         },
         async ({ db_name, collection_name, query, update, upsert = false }) => {
             try {
-                const { value: parsedQuery } = parseParam<Record<string, unknown>>(query, 'object', { fieldName: 'query' });
-                const { value: parsedUpdate } = parseUpdate(update, { fieldName: 'update' });
-                const { value: parsedUpsert } = parseParam<boolean>(upsert, 'boolean', { fieldName: 'upsert' });
+                const parsed = parseParams([
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
+                    { raw: update, outKey: 'update', custom: (r) => parseUpdate(r, { fieldName: 'update' }).value },
+                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } }
+                ]);
+                const parsedQuery = parsed.query as Record<string, unknown>;
+                const parsedUpdate = parsed.update as Record<string, unknown>;
+                const parsedUpsert = parsed.upsert as boolean;
 
                 const { getDocumentDBContext } = await import('../context/documentdb');
                 const { client } = getDocumentDBContext();
