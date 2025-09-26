@@ -28,285 +28,297 @@ import { registerIndexAdvisorPrompts } from './prompts/index-advisor-prompts.js'
  * Create and configure the MCP server
  */
 export function createServer(): McpServer {
-    const server = new McpServer({
-        name: 'documentdb-mcp-server',
-        version: '0.1.0'
-    });
+	const server = new McpServer({
+		name: 'documentdb-mcp-server',
+		version: '0.1.0',
+	});
 
-    // Register Tools
-    // Register connection tools
-    registerConnectionTools(server);
-    // Register database tools
-    registerDatabaseTools(server);
-    // Register collection tools
-    registerCollectionTools(server);
-    // Register document tools
-    registerDocumentTools(server);
-    // Register index tools
-    registerIndexTools(server);
-    // Register workflow tools
-    registerWorkflowTools(server);
+	// Register Tools
+	// Register connection tools
+	registerConnectionTools(server);
+	// Register database tools
+	registerDatabaseTools(server);
+	// Register collection tools
+	registerCollectionTools(server);
+	// Register document tools
+	registerDocumentTools(server);
+	// Register index tools
+	registerIndexTools(server);
+	// Register workflow tools
+	registerWorkflowTools(server);
 
-    // Register Resources
-    // Register collection resources
-    registerCollectionResources(server);
-    // Register database resources
-    registerDatabaseResources(server);
-    // Register other resources
-    registerOtherResources(server);
+	// Register Resources
+	// Register collection resources
+	registerCollectionResources(server);
+	// Register database resources
+	registerDatabaseResources(server);
+	// Register other resources
+	registerOtherResources(server);
 
-    // Register index advisor related prompts
-    registerIndexAdvisorPrompts(server);
+	// Register index advisor related prompts
+	registerIndexAdvisorPrompts(server);
 
-    
-    return server;
+	return server;
 }
 
 /**
  * Run the server with stdio transport
  */
 export async function runStdioServer(): Promise<void> {
-    const server = createServer();
+	const server = createServer();
 
-    // Initialize DocumentDB context
-    await initializeDocumentDBContext();
+	// Initialize DocumentDB context
+	await initializeDocumentDBContext();
 
-    // Setup cleanup on process termination
-    const cleanup = async () => {
-        await closeDocumentDBContext();
-        process.exit(0);
-    };
+	// Setup cleanup on process termination
+	const cleanup = async () => {
+		await closeDocumentDBContext();
+		process.exit(0);
+	};
 
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
-    process.on('uncaughtException', async (error) => {
-        console.error('Uncaught exception:', error);
-        await cleanup();
-    });
-    process.on('unhandledRejection', async (reason) => {
-        console.error('Unhandled rejection:', reason);
-        await cleanup();
-    });
+	process.on('SIGINT', cleanup);
+	process.on('SIGTERM', cleanup);
+	process.on('uncaughtException', async (error) => {
+		console.error('Uncaught exception:', error);
+		await cleanup();
+	});
+	process.on('unhandledRejection', async (reason) => {
+		console.error('Unhandled rejection:', reason);
+		await cleanup();
+	});
 
-    // Create and run transport
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
+	// Create and run transport
+	const transport = new StdioServerTransport();
+	await server.connect(transport);
 
-    console.error('DocumentDB MCP Server running on stdio transport');
+	console.error('DocumentDB MCP Server running on stdio transport');
 }
 
 /**
  * Run the server with streamable HTTP transport
  */
 export async function runHttpServer(): Promise<void> {
-    const app = express();
-    app.use(express.json());
+	const app = express();
+	app.use(express.json());
 
-    // Configure CORS to expose Mcp-Session-Id header for browser-based clients
-    app.use(cors({
-        origin: '*', // Allow all origins - adjust as needed for production
-        exposedHeaders: ['Mcp-Session-Id']
-    }));
+	// Configure CORS to expose Mcp-Session-Id header for browser-based clients
+	app.use(
+		cors({
+			origin: '*', // Allow all origins - adjust as needed for production
+			exposedHeaders: ['Mcp-Session-Id'],
+		}),
+	);
 
-    // Store transports by session ID
-    const transports: Record<string, StreamableHTTPServerTransport> = {};
+	// Store transports by session ID
+	const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-    // Initialize DocumentDB context once
-    await initializeDocumentDBContext();
+	// Initialize DocumentDB context once
+	await initializeDocumentDBContext();
 
-    // Handle all MCP Streamable HTTP requests (GET, POST, DELETE)
-    app.all('/mcp', async (req: Request, res: Response) => {
-        console.error(`Received ${req.method} request to /mcp`);
+	// Handle all MCP Streamable HTTP requests (GET, POST, DELETE)
+	app.all('/mcp', async (req: Request, res: Response) => {
+		console.error(`Received ${req.method} request to /mcp`);
 
-        try {
-            // Check for existing session ID
-            const sessionId = req.headers['mcp-session-id'] as string | undefined;
-            let transport: StreamableHTTPServerTransport;
+		try {
+			// Check for existing session ID
+			const sessionId = req.headers['mcp-session-id'] as string | undefined;
+			let transport: StreamableHTTPServerTransport;
 
-            if (sessionId && transports[sessionId]) {
-                // Reuse existing transport
-                transport = transports[sessionId];
-            } else if (!sessionId && req.method === 'POST' && req.body?.method === 'initialize') {
-                // Create new transport for initialization request
-                transport = new StreamableHTTPServerTransport({
-                    sessionIdGenerator: () => randomUUID(),
-                    onsessioninitialized: (sessionId: string) => {
-                        console.error(`Session initialized with ID: ${sessionId}`);
-                        transports[sessionId] = transport;
-                    },
-                    onsessionclosed: (sessionId: string | undefined) => {
-                        if (sessionId && transports[sessionId]) {
-                            console.error(`Session closed: ${sessionId}`);
-                            delete transports[sessionId];
-                        }
-                    }
-                });
+			if (sessionId && transports[sessionId]) {
+				// Reuse existing transport
+				transport = transports[sessionId];
+			} else if (!sessionId && req.method === 'POST' && req.body?.method === 'initialize') {
+				// Create new transport for initialization request
+				transport = new StreamableHTTPServerTransport({
+					sessionIdGenerator: () => randomUUID(),
+					onsessioninitialized: (sessionId: string) => {
+						console.error(`Session initialized with ID: ${sessionId}`);
+						transports[sessionId] = transport;
+					},
+					onsessionclosed: (sessionId: string | undefined) => {
+						if (sessionId && transports[sessionId]) {
+							console.error(`Session closed: ${sessionId}`);
+							delete transports[sessionId];
+						}
+					},
+				});
 
-                // Set up onclose handler to clean up transport when closed
-                transport.onclose = () => {
-                    const sid = transport.sessionId;
-                    if (sid && transports[sid]) {
-                        console.error(`Transport closed for session ${sid}`);
-                        delete transports[sid];
-                    }
-                };
+				// Set up onclose handler to clean up transport when closed
+				transport.onclose = () => {
+					const sid = transport.sessionId;
+					if (sid && transports[sid]) {
+						console.error(`Transport closed for session ${sid}`);
+						delete transports[sid];
+					}
+				};
 
-                // Connect the transport to the MCP server
-                const server = createServer();
-                await server.connect(transport);
-            } else {
-                // Invalid request
-                res.status(400).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32000,
-                        message: 'Bad Request: No valid session ID provided or not an initialization request',
-                    },
-                    id: null,
-                });
-                return;
-            }
+				// Connect the transport to the MCP server
+				const server = createServer();
+				await server.connect(transport);
+			} else {
+				// Invalid request
+				res.status(400).json({
+					jsonrpc: '2.0',
+					error: {
+						code: -32000,
+						message:
+							'Bad Request: No valid session ID provided or not an initialization request',
+					},
+					id: null,
+				});
+				return;
+			}
 
-            // Handle the request with the transport
-            await transport.handleRequest(req, res, req.body);
-        } catch (error) {
-            console.error('Error handling MCP request:', error);
-            if (!res.headersSent) {
-                res.status(500).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32603,
-                        message: 'Internal server error',
-                    },
-                    id: null,
-                });
-            }
-        }
-    });
+			// Handle the request with the transport
+			await transport.handleRequest(req, res, req.body);
+		} catch (error) {
+			console.error('Error handling MCP request:', error);
+			if (!res.headersSent) {
+				res.status(500).json({
+					jsonrpc: '2.0',
+					error: {
+						code: -32603,
+						message: 'Internal server error',
+					},
+					id: null,
+				});
+			}
+		}
+	});
 
-    // Setup cleanup on process termination
-    const cleanup = async () => {
-        console.error('Shutting down HTTP server...');
+	// Setup cleanup on process termination
+	const cleanup = async () => {
+		console.error('Shutting down HTTP server...');
 
-        // Close all active transports
-        for (const sessionId in transports) {
-            try {
-                console.error(`Closing transport for session ${sessionId}`);
-                await transports[sessionId].close();
-                delete transports[sessionId];
-            } catch (error) {
-                console.error(`Error closing transport for session ${sessionId}:`, error);
-            }
-        }
+		// Close all active transports
+		for (const sessionId in transports) {
+			try {
+				console.error(`Closing transport for session ${sessionId}`);
+				await transports[sessionId].close();
+				delete transports[sessionId];
+			} catch (error) {
+				console.error(`Error closing transport for session ${sessionId}:`, error);
+			}
+		}
 
-        await closeDocumentDBContext();
-        process.exit(0);
-    };
+		await closeDocumentDBContext();
+		process.exit(0);
+	};
 
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
-    process.on('uncaughtException', async (error) => {
-        console.error('Uncaught exception:', error);
-        await cleanup();
-    });
-    process.on('unhandledRejection', async (reason) => {
-        console.error('Unhandled rejection:', reason);
-        await cleanup();
-    });
+	process.on('SIGINT', cleanup);
+	process.on('SIGTERM', cleanup);
+	process.on('uncaughtException', async (error) => {
+		console.error('Uncaught exception:', error);
+		await cleanup();
+	});
+	process.on('unhandledRejection', async (reason) => {
+		console.error('Unhandled rejection:', reason);
+		await cleanup();
+	});
 
-    // Start the HTTP server
-    const server = app.listen(config.port, config.host, () => {
-        console.error(`DocumentDB MCP Server running on http://${config.host}:${config.port}/mcp`);
-        console.error('Supported methods: GET, POST, DELETE');
-    });
+	// Start the HTTP server
+	const server = app.listen(config.port, config.host, () => {
+		console.error(`DocumentDB MCP Server running on http://${config.host}:${config.port}/mcp`);
+		console.error('Supported methods: GET, POST, DELETE');
+	});
 
-    return new Promise((resolve, reject) => {
-        server.on('error', reject);
-        server.on('listening', () => resolve());
-    });
+	return new Promise((resolve, reject) => {
+		server.on('error', reject);
+		server.on('listening', () => resolve());
+	});
 }
 
 /**
  * Run the server with the specified transport
  */
 export async function runServer(): Promise<void> {
-    if (config.transport === 'streamable-http') {
-        await runHttpServer();
-    } else if (config.transport === 'sse') {
-        await runSseServer();
-    } else {
-        await runStdioServer();
-    }
+	if (config.transport === 'streamable-http') {
+		await runHttpServer();
+	} else if (config.transport === 'sse') {
+		await runSseServer();
+	} else {
+		await runStdioServer();
+	}
 }
 
 /**
  * SSE server: GET /sse establishes stream; POST /sse/messages?sessionId=... sends messages
  */
 export async function runSseServer(): Promise<void> {
-    const app = express();
-    app.use(express.json());
-    app.use(cors({ origin: '*' }));
+	const app = express();
+	app.use(express.json());
+	app.use(cors({ origin: '*' }));
 
-    const transports: Record<string, SSEServerTransport> = {};
+	const transports: Record<string, SSEServerTransport> = {};
 
-    await initializeDocumentDBContext();
+	await initializeDocumentDBContext();
 
-    app.get('/sse', async (req: Request, res: Response) => {
-        try {
-            const transport = new SSEServerTransport('/sse/messages', res);
-            transports[transport.sessionId] = transport;
-            transport.onclose = () => {
-                const sid = transport.sessionId;
-                if (transports[sid]) {
-                    delete transports[sid];
-                    console.error(`SSE session closed: ${sid}`);
-                }
-            };
-            const server = createServer();
-            await server.connect(transport); // starts transport
-            console.error(`SSE session started: ${transport.sessionId}`);
-        } catch (err) {
-            console.error('Failed to start SSE session', err);
-            if (!res.headersSent) res.status(500).end('Failed to start SSE session');
-        }
-    });
+	app.get('/sse', async (req: Request, res: Response) => {
+		try {
+			const transport = new SSEServerTransport('/sse/messages', res);
+			transports[transport.sessionId] = transport;
+			transport.onclose = () => {
+				const sid = transport.sessionId;
+				if (transports[sid]) {
+					delete transports[sid];
+					console.error(`SSE session closed: ${sid}`);
+				}
+			};
+			const server = createServer();
+			await server.connect(transport); // starts transport
+			console.error(`SSE session started: ${transport.sessionId}`);
+		} catch (err) {
+			console.error('Failed to start SSE session', err);
+			if (!res.headersSent) res.status(500).end('Failed to start SSE session');
+		}
+	});
 
-    app.post('/sse/messages', async (req: Request, res: Response) => {
-        const sessionId = req.query.sessionId as string | undefined;
-        if (!sessionId || !transports[sessionId]) {
-            res.status(400).end('Invalid or missing sessionId');
-            return;
-        }
-        const transport = transports[sessionId];
-        try {
-            await transport.handlePostMessage(req as any, res as any, req.body);
-        } catch (err) {
-            console.error('Error handling SSE message', err);
-            if (!res.headersSent) res.status(500).end('Error handling message');
-        }
-    });
+	app.post('/sse/messages', async (req: Request, res: Response) => {
+		const sessionId = req.query.sessionId as string | undefined;
+		if (!sessionId || !transports[sessionId]) {
+			res.status(400).end('Invalid or missing sessionId');
+			return;
+		}
+		const transport = transports[sessionId];
+		try {
+			await transport.handlePostMessage(req as any, res as any, req.body);
+		} catch (err) {
+			console.error('Error handling SSE message', err);
+			if (!res.headersSent) res.status(500).end('Error handling message');
+		}
+	});
 
-    const cleanup = async () => {
-        console.error('Shutting down SSE server...');
-        for (const sid of Object.keys(transports)) {
-            try { await transports[sid].close(); } catch {}
-            delete transports[sid];
-        }
-        await closeDocumentDBContext();
-        process.exit(0);
-    };
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
-    process.on('uncaughtException', async (e) => { console.error('Uncaught exception:', e); await cleanup(); });
-    process.on('unhandledRejection', async (r) => { console.error('Unhandled rejection:', r); await cleanup(); });
+	const cleanup = async () => {
+		console.error('Shutting down SSE server...');
+		for (const sid of Object.keys(transports)) {
+			try {
+				await transports[sid].close();
+			} catch {}
+			delete transports[sid];
+		}
+		await closeDocumentDBContext();
+		process.exit(0);
+	};
+	process.on('SIGINT', cleanup);
+	process.on('SIGTERM', cleanup);
+	process.on('uncaughtException', async (e) => {
+		console.error('Uncaught exception:', e);
+		await cleanup();
+	});
+	process.on('unhandledRejection', async (r) => {
+		console.error('Unhandled rejection:', r);
+		await cleanup();
+	});
 
-    const server = app.listen(config.port, config.host, () => {
-        console.error(`DocumentDB MCP Server (SSE) running at http://${config.host}:${config.port}/sse`);
-        console.error('SSE endpoints: GET /sse, POST /sse/messages?sessionId=...');
-    });
+	const server = app.listen(config.port, config.host, () => {
+		console.error(
+			`DocumentDB MCP Server (SSE) running at http://${config.host}:${config.port}/sse`,
+		);
+		console.error('SSE endpoints: GET /sse, POST /sse/messages?sessionId=...');
+	});
 
-    return new Promise((resolve, reject) => {
-        server.on('error', reject);
-        server.on('listening', () => resolve());
-    });
+	return new Promise((resolve, reject) => {
+		server.on('error', reject);
+		server.on('listening', () => resolve());
+	});
 }

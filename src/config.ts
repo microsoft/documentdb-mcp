@@ -6,15 +6,15 @@
 import 'dotenv/config';
 
 export interface MCPConfig {
-    transport: 'stdio' | 'sse' | 'streamable-http';
-    host: string;
-    port: number;
-    documentDbUri: string;
+	transport: 'stdio' | 'sse' | 'streamable-http';
+	host: string;
+	port: number;
+	documentDbUri: string;
 }
 
 export const config: MCPConfig = {
-    transport: (process.env.TRANSPORT as 'stdio' | 'sse' | 'streamable-http') || 'streamable-http',
-    host: process.env.HOST || 'localhost',
-    port: parseInt(process.env.PORT || '8070', 10),
-    documentDbUri: process.env.DOCUMENTDB_URI || 'mongodb://localhost:27017',
+	transport: (process.env.TRANSPORT as 'stdio' | 'sse' | 'streamable-http') || 'streamable-http',
+	host: process.env.HOST || 'localhost',
+	port: parseInt(process.env.PORT || '8070', 10),
+	documentDbUri: process.env.DOCUMENTDB_URI || 'mongodb://localhost:27017',
 };
