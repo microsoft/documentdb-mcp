@@ -128,66 +128,69 @@ Now gather any missing inputs or run the optimization.`;
  * Register all index advisor related prompts
  */
 export function registerIndexAdvisorPrompts(server: McpServer) {
-	server.registerPrompt(
-		'find_query_optimizer',
-		{
-			title: 'Find Query Optimizer',
-			description: 'Analyze and optimize a MongoDB find query using real execution stats and index recommendations.',
-		},
-		async () => {
-			return {
-				messages: [
-					{
-						role: 'user',
-						content: {
-							type: 'text',
-							text: FIND_QUERY_OPTIMIZER_PROMPT,
-						},
-					},
-				],
-			};
-		},
-	);
+    server.registerPrompt(
+        'find_query_optimizer',
+        {
+            title: 'Find Query Optimizer',
+            description:
+                'Analyze and optimize a MongoDB find query using real execution stats and index recommendations.',
+        },
+        async () => {
+            return {
+                messages: [
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: FIND_QUERY_OPTIMIZER_PROMPT,
+                        },
+                    },
+                ],
+            };
+        },
+    );
 
-	server.registerPrompt(
-		'aggregate_query_optimizer',
-		{
-			title: 'Aggregate Query Optimizer',
-			description: 'Analyze and optimize a MongoDB aggregation pipeline with execution stats and stage/index recommendations.',
-		},
-		async () => {
-			return {
-				messages: [
-					{
-						role: 'user',
-						content: {
-							type: 'text',
-							text: AGGREGATE_QUERY_OPTIMIZER_PROMPT,
-						},
-					},
-				],
-			};
-		},
-	);
+    server.registerPrompt(
+        'aggregate_query_optimizer',
+        {
+            title: 'Aggregate Query Optimizer',
+            description:
+                'Analyze and optimize a MongoDB aggregation pipeline with execution stats and stage/index recommendations.',
+        },
+        async () => {
+            return {
+                messages: [
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: AGGREGATE_QUERY_OPTIMIZER_PROMPT,
+                        },
+                    },
+                ],
+            };
+        },
+    );
 
-	server.registerPrompt(
-		'count_query_optimizer',
-		{
-			title: 'Count Query Optimizer',
-			description: 'Analyze and optimize a MongoDB count query focusing on index / index-only scan opportunities.',
-		},
-		async () => {
-			return {
-				messages: [
-					{
-						role: 'user',
-						content: {
-							type: 'text',
-							text: COUNT_QUERY_OPTIMIZER_PROMPT,
-						},
-					},
-				],
-			};
-		},
-	);
+    server.registerPrompt(
+        'count_query_optimizer',
+        {
+            title: 'Count Query Optimizer',
+            description:
+                'Analyze and optimize a MongoDB count query focusing on index / index-only scan opportunities.',
+        },
+        async () => {
+            return {
+                messages: [
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: COUNT_QUERY_OPTIMIZER_PROMPT,
+                        },
+                    },
+                ],
+            };
+        },
+    );
 }
