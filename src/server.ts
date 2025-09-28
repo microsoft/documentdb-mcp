@@ -8,7 +8,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express, { type Request, type Response } from 'express';
-import cors from 'cors';
 import { randomUUID } from 'node:crypto';
 
 import { initializeDocumentDBContext, closeDocumentDBContext } from './context/documentdb';
@@ -100,15 +99,6 @@ export async function runStdioServer(): Promise<void> {
 export async function runHttpServer(): Promise<void> {
 	const app = express();
 	app.use(express.json());
-
-	// Configure CORS to expose Mcp-Session-Id header for browser-based clients
-	app.use(
-		cors({
-			origin: '*', // Allow all origins - adjust as needed for production
-			exposedHeaders: ['Mcp-Session-Id'],
-		}),
-	);
-
 	// Store transports by session ID
 	const transports: Record<string, StreamableHTTPServerTransport> = {};
 
@@ -246,7 +236,6 @@ export async function runServer(): Promise<void> {
 export async function runSseServer(): Promise<void> {
 	const app = express();
 	app.use(express.json());
-	app.use(cors({ origin: '*' }));
 
 	const transports: Record<string, SSEServerTransport> = {};
 
