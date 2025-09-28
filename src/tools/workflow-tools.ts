@@ -18,7 +18,7 @@ export function registerWorkflowTools(server: McpServer): void {
 		{
 			title: 'Optimize Find Query',
 			description:
-				'Provide all the information needed for optimizing find query, including execution plan with metrics, index information and collection statistics. Support sort, projection, limit, and skip.',
+				'Provide all the information needed for optimizing a find query (execution plan with metrics, index info, collection stats). Accepts a consolidated "options" object that can include sort, projection, limit, skip.',
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 				collection_name: z.string().describe('Name of the collection'),
@@ -26,19 +26,13 @@ export function registerWorkflowTools(server: McpServer): void {
 					.union([z.record(z.unknown()), z.string()])
 					.default({})
 					.describe('Query filter in MongoDB style'),
-				sort: z
-					.union([z.record(z.number()), z.string()])
+				options: z
+					.union([z.record(z.unknown()), z.string()])
 					.optional()
-					.describe('Sort specification in MongoDB style'),
-				projection: z
-					.union([z.record(z.number()), z.string()])
-					.optional()
-					.describe('Projection specification in MongoDB style'),
-				limit: z.union([z.number(), z.string()]).optional().describe('Limit the number of documents returned (number or numeric string)'),
-				skip: z.union([z.number(), z.string()]).optional().describe('Number of documents to skip (number or numeric string)'),
+					.describe('Consolidated find options that may include sort, projection, limit, skip.'),
 			},
 		},
-		async ({ db_name, collection_name, query, sort, projection, limit, skip }) => {
+		async ({ db_name, collection_name, query, options }) => {
 			try {
 				// Batch parse parameters with new optional semantics
 				const parsed = parseParams([
@@ -49,45 +43,29 @@ export function registerWorkflowTools(server: McpServer): void {
 						options: { fieldName: 'query', defaultValue: {} },
 					},
 					{
-						raw: sort,
+						raw: options,
 						expected: 'object',
-						outKey: 'sort',
-						options: {
-							fieldName: 'sort',
-							optional: true,
-							treatEmptyObjectAsUndefined: true,
-						},
-					},
-					{
-						raw: projection,
-						expected: 'object',
-						outKey: 'projection',
-						options: {
-							fieldName: 'projection',
-							optional: true,
-							treatEmptyObjectAsUndefined: true,
-						},
-					},
-					{
-						raw: limit,
-						expected: 'int',
-						outKey: 'limit',
-						options: { fieldName: 'limit', optional: true, nonNegative: true },
-					},
-					{
-						raw: skip,
-						expected: 'int',
-						outKey: 'skip',
-						options: { fieldName: 'skip', optional: true, nonNegative: true },
+						outKey: 'options',
+						options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
 					},
 				]);
 
 				const parsedQuery = parsed.query || {};
+				// Build findOptions strictly from consolidated options
 				const findOptions: any = {};
-				if (parsed.sort !== undefined) findOptions.sort = parsed.sort;
-				if (parsed.projection !== undefined) findOptions.projection = parsed.projection;
-				if (parsed.limit !== undefined) findOptions.limit = parsed.limit;
-				if (parsed.skip !== undefined) findOptions.skip = parsed.skip;
+				if (parsed.options) {
+					const o: any = parsed.options;
+					if (o.sort !== undefined) findOptions.sort = o.sort;
+					if (o.projection !== undefined) findOptions.projection = o.projection;
+					if (o.limit !== undefined) {
+						const lim = typeof o.limit === 'string' ? Number(o.limit) : o.limit;
+						if (Number.isFinite(lim)) findOptions.limit = lim;
+					}
+					if (o.skip !== undefined) {
+						const sk = typeof o.skip === 'string' ? Number(o.skip) : o.skip;
+						if (Number.isFinite(sk)) findOptions.skip = sk;
+					}
+				}
 
 				const { getDocumentDBContext } = await import('../context/documentdb');
 				const { client } = getDocumentDBContext();

@@ -16,7 +16,7 @@ export function registerDocumentTools(server: McpServer): void {
 		'find_documents',
 		{
 			title: 'Find Documents',
-			description: 'Find documents in a collection with optional query, limit and skip',
+			description: 'Find documents in a collection. Supports consolidated "options" object (limit, skip, sort, projection).',
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 				collection_name: z.string().describe('Name of the collection to query'),
@@ -24,11 +24,13 @@ export function registerDocumentTools(server: McpServer): void {
 					.union([z.record(z.unknown()), z.string()])
 					.default({})
 					.describe('Query filter in MongoDB style'),
-				limit: z.union([z.number(), z.string()]).default(100).describe('Maximum number of documents to return'),
-				skip: z.union([z.number(), z.string()]).default(0).describe('Number of documents to skip'),
+				options: z
+					.union([z.record(z.unknown()), z.string()])
+					.optional()
+					.describe('Consolidated find options. Fields: limit (default 100), skip (default 0), sort, projection.'),
 			},
 		},
-		async ({ db_name, collection_name, query = {}, limit = 100, skip = 0 }) => {
+		async ({ db_name, collection_name, query = {}, options }) => {
 			try {
 				const parsed = parseParams([
 					{
@@ -38,37 +40,53 @@ export function registerDocumentTools(server: McpServer): void {
 						options: { fieldName: 'query' },
 					},
 					{
-						raw: limit,
-						expected: 'int',
-						outKey: 'limit',
-						options: { fieldName: 'limit', nonNegative: true },
-					},
-					{
-						raw: skip,
-						expected: 'int',
-						outKey: 'skip',
-						options: { fieldName: 'skip', nonNegative: true },
+						raw: options,
+						expected: 'object',
+						outKey: 'options',
+						options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
 					},
 				]);
 				const parsedQuery = parsed.query as Record<string, unknown>;
-				const parsedLimit = parsed.limit as number;
-				const parsedSkip = parsed.skip as number;
+				// Derive options with defaults
+				const o: any = parsed.options || {};
+				let limitVal = 100;
+				let skipVal = 0;
+				if (o.limit !== undefined) {
+					const lv = typeof o.limit === 'string' ? Number(o.limit) : o.limit;
+					if (Number.isFinite(lv) && lv >= 0) limitVal = lv;
+				}
+				if (o.skip !== undefined) {
+					const sv = typeof o.skip === 'string' ? Number(o.skip) : o.skip;
+					if (Number.isFinite(sv) && sv >= 0) skipVal = sv;
+				}
+				const sortVal = o.sort !== undefined ? o.sort : undefined;
+				const projectionVal = o.projection !== undefined ? o.projection : undefined;
 
 				const { getDocumentDBContext } = await import('../context/documentdb');
 				const { client } = getDocumentDBContext();
 				const collection = client.db(db_name).collection(collection_name);
 
-				const documents = await collection.find(parsedQuery).skip(parsedSkip).limit(parsedLimit).toArray();
+				const findOptions: any = {};
+				if (sortVal !== undefined) findOptions.sort = sortVal;
+				if (projectionVal !== undefined) findOptions.projection = projectionVal;
+				if (skipVal) findOptions.skip = skipVal; // skip=0 omitted
+				if (limitVal) findOptions.limit = limitVal; // always positive
+				const documents = await collection.find(parsedQuery, findOptions).toArray();
+				// totalCount intentionally ignores skip/limit (counts full match set)
 				const totalCount = await collection.countDocuments(parsedQuery);
 
 				const response = {
 					documents,
 					total_count: totalCount,
-					limit: parsedLimit,
-					skip: parsedSkip,
 					returned_count: documents.length,
-					has_more: parsedSkip + documents.length < totalCount,
+					has_more: skipVal + documents.length < totalCount,
 					query: parsedQuery,
+					applied_options: {
+						limit: limitVal,
+						skip: skipVal,
+						sort: sortVal,
+						projection: projectionVal,
+					},
 				};
 
 				return {
@@ -638,7 +656,8 @@ export function registerDocumentTools(server: McpServer): void {
 		'explain_find_query',
 		{
 			title: 'Explain Find Query',
-			description: 'Explain the execution plan with execution stats for a find query',
+			description:
+				'Explain the execution plan with execution stats for a find query using consolidated options (sort, projection, limit, skip).',
 			inputSchema: {
 				db_name: z.string().describe('Name of the database'),
 				collection_name: z.string().describe('Name of the collection'),
@@ -646,18 +665,13 @@ export function registerDocumentTools(server: McpServer): void {
 					.union([z.record(z.unknown()), z.string()])
 					.default({})
 					.describe('Query filter in MongoDB style'),
-				sort: z
-					.union([z.record(z.unknown()), z.string(), z.null()])
+				options: z
+					.union([z.record(z.unknown()), z.string()])
 					.optional()
-					.describe('Sort specification'),
-				limit: z.union([z.number(), z.string(), z.null()]).optional().describe('Limit'),
-				projection: z
-					.union([z.record(z.unknown()), z.string(), z.null()])
-					.optional()
-					.describe('Projection specification'),
+					.describe('Consolidated find options. Fields: sort, projection, limit, skip.'),
 			},
 		},
-		async ({ db_name, collection_name, query = {}, sort, limit, projection }) => {
+		async ({ db_name, collection_name, query = {}, options }) => {
 			try {
 				const parsed = parseParams([
 					{
@@ -667,47 +681,50 @@ export function registerDocumentTools(server: McpServer): void {
 						options: { fieldName: 'query', defaultValue: {} },
 					},
 					{
-						raw: sort,
+						raw: options,
 						expected: 'object',
-						outKey: 'sort',
-						options: {
-							fieldName: 'sort',
-							optional: true,
-							treatEmptyObjectAsUndefined: true,
-						},
-					},
-					{
-						raw: projection,
-						expected: 'object',
-						outKey: 'projection',
-						options: {
-							fieldName: 'projection',
-							optional: true,
-							treatEmptyObjectAsUndefined: true,
-						},
-					},
-					{
-						raw: limit,
-						expected: 'int',
-						outKey: 'limit',
-						options: { fieldName: 'limit', optional: true, nonNegative: true },
+						outKey: 'options',
+						options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
 					},
 				]);
 				const parsedQuery = parsed.query as Record<string, unknown>;
-				const parsedSort = parsed.sort as Record<string, unknown> | undefined;
-				const parsedProjection = parsed.projection as Record<string, unknown> | undefined;
-				const parsedLimit = parsed.limit as number | undefined;
+				const o: any = parsed.options || {};
+				const sortVal = o.sort !== undefined ? o.sort : undefined;
+				const projectionVal = o.projection !== undefined ? o.projection : undefined;
+				let limitVal: number | undefined;
+				if (o.limit !== undefined) {
+					const lv = typeof o.limit === 'string' ? Number(o.limit) : o.limit;
+					if (Number.isFinite(lv) && lv >= 0) limitVal = lv;
+				}
+				let skipVal: number | undefined;
+				if (o.skip !== undefined) {
+					const sv = typeof o.skip === 'string' ? Number(o.skip) : o.skip;
+					if (Number.isFinite(sv) && sv >= 0) skipVal = sv;
+				}
 				const { getDocumentDBContext } = await import('../context/documentdb');
 				const { client } = getDocumentDBContext();
 				const db = client.db(db_name);
 				const findCmd: any = { find: collection_name, filter: parsedQuery };
-				if (parsedSort) findCmd.sort = parsedSort;
-				if (parsedLimit !== undefined) findCmd.limit = parsedLimit;
-				if (parsedProjection) findCmd.projection = parsedProjection;
+				if (sortVal !== undefined) findCmd.sort = sortVal;
+				if (limitVal !== undefined) findCmd.limit = limitVal;
+				if (skipVal !== undefined) findCmd.skip = skipVal;
+				if (projectionVal !== undefined) findCmd.projection = projectionVal;
 				const command = { explain: findCmd, verbosity: 'executionStats' };
 				const explainOutput = await db.command(command as any);
 				return {
-					content: [{ type: 'text', text: JSON.stringify(explainOutput, null, 2) }],
+					content: [
+						{
+							type: 'text',
+							text: JSON.stringify(
+								{
+									options_applied: { sort: sortVal, projection: projectionVal, limit: limitVal, skip: skipVal },
+									explain: explainOutput,
+								},
+								null,
+								2,
+							),
+						},
+					],
 				};
 			} catch (error) {
 				return {
@@ -773,9 +790,9 @@ export function registerDocumentTools(server: McpServer): void {
 				});
 
 				const response = {
-					matched: result ? (result.lastErrorObject?.updatedExisting ?? false) : false,
+					matched: result ? result.lastErrorObject?.updatedExisting ?? false : false,
 					upsertedId: result ? result.lastErrorObject?.upserted : undefined,
-					original_document: result ? (result.value ?? null) : null,
+					original_document: result ? result.value ?? null : null,
 					query: parsedQuery,
 					update: parsedUpdate,
 					upsert,
