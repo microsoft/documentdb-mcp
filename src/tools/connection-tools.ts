@@ -5,7 +5,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam, parseParams } from './utils/paramParser';
+import { parseParams } from './utils/paramParser';
+import { connectToDocumentDB, disconnectFromDocumentDB, getConnectionStatus } from '../context/documentdb';
 
 /**
  * Register connection-related tools
@@ -36,7 +37,6 @@ export function registerConnectionTools(server: McpServer): void {
 					},
 				]);
 				const testConn = parsed.test_connection as boolean;
-				const { connectToDocumentDB } = await import('../context/documentdb');
 				const result = await connectToDocumentDB(connection_string, testConn);
 
 				return {
@@ -70,7 +70,6 @@ export function registerConnectionTools(server: McpServer): void {
 		},
 		async () => {
 			try {
-				const { disconnectFromDocumentDB } = await import('../context/documentdb');
 				const result = await disconnectFromDocumentDB();
 
 				return {
@@ -104,7 +103,6 @@ export function registerConnectionTools(server: McpServer): void {
 		},
 		async () => {
 			try {
-				const { getConnectionStatus } = await import('../context/documentdb');
 				const status = await getConnectionStatus();
 
 				return {

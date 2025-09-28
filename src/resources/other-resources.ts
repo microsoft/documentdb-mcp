@@ -4,7 +4,10 @@ import { getDocumentDBContext } from '../context/documentdb.js';
 export function registerOtherResources(server: McpServer) {
 	// server_status
 	server.registerResource('server_status', 'server://status', { title: 'Server Status', description: 'Server status information' }, async () => {
-		const { client } = getDocumentDBContext();
+		const { client, connected } = getDocumentDBContext();
+		if (!connected || !client) {
+			throw new Error('Not connected to any DocumentDB instance.');
+		}
 		const status = await client.db().admin().serverStatus();
 		return {
 			contents: [
@@ -23,7 +26,10 @@ export function registerOtherResources(server: McpServer) {
 		'server://replica_status',
 		{ title: 'Replica Status', description: 'Replica set status and configuration' },
 		async () => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			try {
 				const rsStatus = await client.db().admin().command({ replSetGetStatus: 1 });
 				return {
@@ -58,7 +64,10 @@ export function registerOtherResources(server: McpServer) {
 			description: 'Real-time performance metrics and profiling data',
 		},
 		async () => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const status = await client.db().admin().serverStatus();
 			const subset = {
 				host: status.host,

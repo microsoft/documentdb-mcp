@@ -4,7 +4,10 @@ import { getDocumentDBContext } from '../context/documentdb.js';
 export function registerDatabaseResources(server: McpServer) {
 	// databases (list all)
 	server.registerResource('databases', 'dbs://list', { title: 'Databases', description: 'List of all accessible databases' }, async () => {
-		const { client } = getDocumentDBContext();
+		const { client, connected } = getDocumentDBContext();
+		if (!connected || !client) {
+			throw new Error('Not connected to any DocumentDB instance.');
+		}
 		const admin = client.db().admin();
 		const info = await admin.listDatabases();
 		const names = info.databases.map((d) => d.name);
@@ -28,7 +31,10 @@ export function registerDatabaseResources(server: McpServer) {
 			description: 'Database users and roles in the current database',
 		},
 		async (uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const db = client.db(dbName);
 			const usersInfo = await db.command({ usersInfo: 1 });
@@ -54,7 +60,6 @@ export function registerDatabaseResources(server: McpServer) {
 		},
 		async (uri, vars) => {
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
-			// Placeholder since MongoDB triggers are usually part of Realm or custom code
 			const data = {
 				db: dbName,
 				triggers: [],
@@ -81,7 +86,10 @@ export function registerDatabaseResources(server: McpServer) {
 			description: 'Stored JavaScript functions in the current database (system.js)',
 		},
 		async (uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const db = client.db(dbName);
 			const functions = await db

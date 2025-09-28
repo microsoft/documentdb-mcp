@@ -5,7 +5,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam, parseUpdate, parseParams } from './utils/paramParser';
+import { parseUpdate, parseParams } from './utils/paramParser';
+import { getDocumentDBContext } from '../context/documentdb';
 
 /**
  * Register document-related tools
@@ -62,8 +63,10 @@ export function registerDocumentTools(server: McpServer): void {
 				const sortVal = o.sort !== undefined ? o.sort : undefined;
 				const projectionVal = o.projection !== undefined ? o.projection : undefined;
 
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 
 				const findOptions: any = {};
@@ -138,8 +141,10 @@ export function registerDocumentTools(server: McpServer): void {
 				]);
 				const parsedQuery = parsed.query as Record<string, unknown>;
 
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const count = await collection.countDocuments(parsedQuery);
 
@@ -188,8 +193,10 @@ export function registerDocumentTools(server: McpServer): void {
 					},
 				]);
 				const doc = parsed.document as Record<string, unknown>;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.insertOne(doc);
 				const response = {
@@ -241,8 +248,10 @@ export function registerDocumentTools(server: McpServer): void {
 				if (!Array.isArray(docs) || docs.some((d) => typeof d !== 'object' || d === null || Array.isArray(d))) {
 					throw new Error('documents must be an array of JSON objects');
 				}
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.insertMany(docs);
 				const insertedIds = Object.values(result.insertedIds).map((id) => String(id));
@@ -306,8 +315,10 @@ export function registerDocumentTools(server: McpServer): void {
 				const parsedFilter = parsed.filter as Record<string, unknown>;
 				const parsedUpdate = parsed.update as Record<string, unknown>;
 				const parsedUpsert = parsed.upsert as boolean;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.updateOne(parsedFilter, parsedUpdate, {
 					upsert: parsedUpsert,
@@ -371,8 +382,10 @@ export function registerDocumentTools(server: McpServer): void {
 				const parsedFilter = parsed.filter as Record<string, unknown>;
 				const parsedUpdate = parsed.update as Record<string, unknown>;
 				const parsedUpsert = parsed.upsert as boolean;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.updateMany(parsedFilter, parsedUpdate, {
 					upsert: parsedUpsert,
@@ -421,8 +434,10 @@ export function registerDocumentTools(server: McpServer): void {
 					},
 				]);
 				const parsedFilter = parsed.filter as Record<string, unknown>;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.deleteOne(parsedFilter);
 				const response = {
@@ -467,8 +482,10 @@ export function registerDocumentTools(server: McpServer): void {
 					},
 				]);
 				const parsedFilter = parsed.filter as Record<string, unknown>;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.deleteMany(parsedFilter);
 				const response = {
@@ -522,8 +539,10 @@ export function registerDocumentTools(server: McpServer): void {
 				const parsedPipeline = parsed.pipeline as any;
 				if (!Array.isArray(parsedPipeline)) throw new Error('pipeline must be an array');
 				const parsedAllowDisk = parsed.allow_disk_use as boolean;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const cursor = collection.aggregate(parsedPipeline, {
 					allowDiskUse: parsedAllowDisk,
@@ -568,8 +587,10 @@ export function registerDocumentTools(server: McpServer): void {
 					},
 				]);
 				const parsedPipeline = parsed.pipeline as any;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const command = {
 					explain: {
@@ -623,8 +644,10 @@ export function registerDocumentTools(server: McpServer): void {
 					},
 				]);
 				const parsedQuery = parsed.query as Record<string, unknown>;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const command = {
 					explain: {
@@ -701,8 +724,10 @@ export function registerDocumentTools(server: McpServer): void {
 					const sv = typeof o.skip === 'string' ? Number(o.skip) : o.skip;
 					if (Number.isFinite(sv) && sv >= 0) skipVal = sv;
 				}
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const findCmd: any = { find: collection_name, filter: parsedQuery };
 				if (sortVal !== undefined) findCmd.sort = sortVal;
@@ -779,8 +804,10 @@ export function registerDocumentTools(server: McpServer): void {
 				const parsedUpdate = parsed.update as Record<string, unknown>;
 				const parsedUpsert = parsed.upsert as boolean;
 
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 
 				// findOneAndUpdate options: returnDocument: 'before' (default prior to driver v5 is 'before'; we set explicitly)

@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { getDocumentDBContext } from '../context/documentdb';
 
 /**
  * Register database-related tools
@@ -19,8 +20,10 @@ export function registerDatabaseTools(server: McpServer): void {
 		},
 		async () => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const adminDb = client.db().admin();
 				const databaseInfos = await adminDb.listDatabases();
 				const databaseNames = databaseInfos.databases.map((db) => db.name);
@@ -59,8 +62,10 @@ export function registerDatabaseTools(server: McpServer): void {
 		},
 		async ({ db_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const stats = await db.stats();
 
@@ -98,8 +103,10 @@ export function registerDatabaseTools(server: McpServer): void {
 		},
 		async ({ db_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const collections = await db.listCollections().toArray();
 
@@ -157,8 +164,10 @@ export function registerDatabaseTools(server: McpServer): void {
 		},
 		async ({ db_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const result = await db.dropDatabase();
 

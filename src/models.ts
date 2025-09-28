@@ -7,7 +7,8 @@ import { type MongoClient } from 'mongodb';
 
 export interface DocumentDBContext {
 	/** MongoDB client instance */
-	client: MongoClient;
+	client?: MongoClient;
+	connected: boolean;
 }
 
 export interface DBInfoResponse {

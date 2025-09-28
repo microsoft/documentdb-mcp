@@ -5,7 +5,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam, parseParams } from './utils/paramParser';
+import { parseParams } from './utils/paramParser';
+import { getDocumentDBContext } from '../context/documentdb';
 
 /**
  * Register index-related tools
@@ -45,8 +46,10 @@ export function registerIndexTools(server: McpServer): void {
 				]);
 				const parsedKeys = parsed.keys as Record<string, any>;
 				const parsedOptions = parsed.options as Record<string, any>;
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.createIndex(parsedKeys as any, parsedOptions as any);
 
@@ -91,8 +94,10 @@ export function registerIndexTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const indexes = await collection.listIndexes().toArray();
 
@@ -137,8 +142,10 @@ export function registerIndexTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name, index_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const result = await collection.dropIndex(index_name);
 
@@ -183,8 +190,10 @@ export function registerIndexTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 				const stats = await collection.aggregate([{ $indexStats: {} }]).toArray();
 
@@ -225,8 +234,10 @@ export function registerIndexTools(server: McpServer): void {
 		},
 		async ({ ops = null }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const parsed = parseParams([
 					{
 						raw: ops,

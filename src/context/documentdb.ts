@@ -25,7 +25,8 @@ export async function initializeDocumentDBContext(): Promise<DocumentDBContext> 
 		connectionStartTime = new Date();
 	}
 	return {
-		client: mongoClient,
+		client: mongoClient ?? undefined,
+		connected: mongoClient !== null,
 	};
 }
 
@@ -179,11 +180,10 @@ export async function closeDocumentDBContext(): Promise<void> {
  * Get current DocumentDB context
  */
 export function getDocumentDBContext(): DocumentDBContext {
-	if (!mongoClient) {
-		throw new Error('DocumentDB context not initialized. Call initializeDocumentDBContext() or use connect_mongodb tool first.');
-	}
+	const connected: boolean = mongoClient !== null;
 	return {
-		client: mongoClient,
+		client: mongoClient ?? undefined,
+		connected,
 	};
 }
 
@@ -192,9 +192,7 @@ export function getDocumentDBContext(): DocumentDBContext {
  */
 export function createDocumentDBContextWrapper(client?: MongoClient): DocumentDBContext {
 	if (client) {
-		return {
-			client: client,
-		};
+		mongoClient = client;
 	}
 
 	return getDocumentDBContext();

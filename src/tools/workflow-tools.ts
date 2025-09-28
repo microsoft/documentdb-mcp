@@ -5,8 +5,9 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam, parseParams } from './utils/paramParser';
+import { parseParams } from './utils/paramParser';
 import { analyzeFindExplain } from './utils/explainAnalyzer';
+import { getDocumentDBContext } from '../context/documentdb';
 
 /**
  * Register workflow-related tools
@@ -67,8 +68,10 @@ export function registerWorkflowTools(server: McpServer): void {
 					}
 				}
 
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const collection = client.db(db_name).collection(collection_name);
 
 				const explainResult = await collection.find(parsedQuery, findOptions).explain('executionStats');
@@ -114,8 +117,10 @@ export function registerWorkflowTools(server: McpServer): void {
 		},
 		async () => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const adminDb = client.db().admin();
 				const databaseInfos = await adminDb.listDatabases();
 
@@ -169,19 +174,30 @@ export function registerWorkflowTools(server: McpServer): void {
 		},
 		async ({ db_name, include_sample_documents = true, sample_size = 3 }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const collections = await db.listCollections().toArray();
-				const { value: includeSamples } = parseParam<boolean>(include_sample_documents, 'boolean', {
-					fieldName: 'include_sample_documents',
-					defaultValue: true,
-				});
-				const { value: sampleSize } = parseParam<number>(sample_size, 'int', {
-					fieldName: 'sample_size',
-					nonNegative: true,
-					defaultValue: 3,
-				});
+
+				// Use batch parser for parameters
+				const parsed = parseParams([
+					{
+						raw: include_sample_documents,
+						outKey: 'includeSamples',
+						expected: 'boolean',
+						options: { fieldName: 'include_sample_documents', defaultValue: true },
+					},
+					{
+						raw: sample_size,
+						outKey: 'sampleSize',
+						expected: 'int',
+						options: { fieldName: 'sample_size', nonNegative: true, defaultValue: 3 },
+					},
+				]);
+				const includeSamples: boolean = parsed.includeSamples;
+				const sampleSize: number = parsed.sampleSize;
 
 				const collectionInfos = await Promise.all(
 					collections.map(async (collection) => {

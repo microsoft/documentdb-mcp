@@ -15,7 +15,10 @@ export function registerCollectionResources(server: McpServer) {
 		collectionVarTemplate('indexes'),
 		{ title: 'Collection Indexes', description: 'Index information for a collection' },
 		async (_uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const collName = Array.isArray(vars.collection) ? vars.collection[0] : vars.collection;
 			const db = client.db(dbName);
@@ -42,7 +45,10 @@ export function registerCollectionResources(server: McpServer) {
 			description: 'Schema information (inferred) for a collection',
 		},
 		async (_uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const collName = Array.isArray(vars.collection) ? vars.collection[0] : vars.collection;
 			const db = client.db(dbName);
@@ -78,7 +84,10 @@ export function registerCollectionResources(server: McpServer) {
 			description: 'Performance and size statistics for a collection',
 		},
 		async (_uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const collName = Array.isArray(vars.collection) ? vars.collection[0] : vars.collection;
 			const db = client.db(dbName);
@@ -104,7 +113,10 @@ export function registerCollectionResources(server: McpServer) {
 			description: 'Validation rules (JSON Schema) for a collection',
 		},
 		async (_uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const collName = Array.isArray(vars.collection) ? vars.collection[0] : vars.collection;
 			const db = client.db(dbName);
@@ -131,7 +143,10 @@ export function registerCollectionResources(server: McpServer) {
 		}),
 		{ title: 'Collections', description: 'List of collections in the current database' },
 		async (_uri, vars) => {
-			const { client } = getDocumentDBContext();
+			const { client, connected } = getDocumentDBContext();
+			if (!connected || !client) {
+				throw new Error('Not connected to any DocumentDB instance.');
+			}
 			const dbName = Array.isArray(vars.db) ? vars.db[0] : vars.db;
 			const db = client.db(dbName);
 			const cols = await db.listCollections().toArray();

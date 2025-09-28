@@ -5,7 +5,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { parseParam, parseParams } from './utils/paramParser';
+import { parseParams } from './utils/paramParser';
+import { getDocumentDBContext } from '../context/documentdb';
 
 /**
  * Register collection-related tools
@@ -24,8 +25,10 @@ export function registerCollectionTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const stats = await db.command({ collStats: collection_name });
 
@@ -65,8 +68,10 @@ export function registerCollectionTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name, new_collection_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				const collection = db.collection(collection_name);
 				await collection.rename(new_collection_name, { dropTarget: false });
@@ -105,8 +110,10 @@ export function registerCollectionTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const db = client.db(db_name);
 				await db.dropCollection(collection_name);
 				return {
@@ -145,8 +152,10 @@ export function registerCollectionTools(server: McpServer): void {
 		},
 		async ({ db_name, collection_name, sample_size = 10 }) => {
 			try {
-				const { getDocumentDBContext } = await import('../context/documentdb');
-				const { client } = getDocumentDBContext();
+				const { client, connected } = getDocumentDBContext();
+				if (!connected || !client) {
+					throw new Error('Not connected to any DocumentDB instance.');
+				}
 				const parsed = parseParams([
 					{
 						raw: sample_size,
