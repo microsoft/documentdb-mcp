@@ -2,7 +2,16 @@
   "name": "documentdb-mcp-server",
   "version": "0.1.0",
   "description": "A DocumentDB MCP Server implemented in TypeScript",
-  "type": "module",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "exports": {
+    ".": "./dist/index.js",
+    "./server": "./dist/server.js"
+  },
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",

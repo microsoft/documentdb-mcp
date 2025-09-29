@@ -1,5 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getDocumentDBContext } from '../context/documentdb.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { getDocumentDBContext } from '../context/documentdb';
 
 export function registerOtherResources(server: McpServer) {
     // server_status

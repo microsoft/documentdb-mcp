@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { z } from 'zod';
 import { getDocumentDBContext } from '../context/documentdb';
+import { withDbGuard } from './utils/dbGuard';
 import { analyzeFindExplain } from './utils/explainAnalyzer';
 import { parseParams } from './utils/paramParser';
 
@@ -33,7 +34,7 @@ export function registerWorkflowTools(server: McpServer): void {
                     .describe('Consolidated find options that may include sort, projection, limit, skip.'),
             },
         },
-        async ({ db_name, collection_name, query, options }) => {
+        withDbGuard(async ({ db_name, collection_name, query, options }) => {
             try {
                 // Batch parse parameters with new optional semantics
                 const parsed = parseParams([
@@ -68,16 +69,13 @@ export function registerWorkflowTools(server: McpServer): void {
                     }
                 }
 
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
 
                 const explainResult = await collection.find(parsedQuery, findOptions).explain('executionStats');
 
                 const indexesStats = await collection.aggregate([{ $indexStats: {} }]).toArray();
-                const collectionStats = await client.db(db_name).command({ collStats: collection_name });
+                const collectionStats = await client!.db(db_name).command({ collStats: collection_name });
 
                 // Compute metrics-only analysis from explain result
                 const analysis = analyzeFindExplain(explainResult);
@@ -109,7 +107,7 @@ export function registerWorkflowTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // List databases for generation tool
@@ -119,13 +117,10 @@ export function registerWorkflowTools(server: McpServer): void {
             title: 'List Databases for Generation',
             description: 'List all databases with basic info for query generation purposes',
         },
-        async () => {
+        withDbGuard(async () => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const adminDb = client.db().admin();
+                const { client } = getDocumentDBContext();
+                const adminDb = client!.db().admin();
                 const databaseInfos = await adminDb.listDatabases();
 
                 const response = {
@@ -159,7 +154,7 @@ export function registerWorkflowTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Get database info for generation tool
@@ -181,13 +176,10 @@ export function registerWorkflowTools(server: McpServer): void {
                     .describe('Number of sample documents per collection (number or numeric string)'),
             },
         },
-        async ({ db_name, include_sample_documents = true, sample_size = 3 }) => {
+        withDbGuard(async ({ db_name, include_sample_documents = true, sample_size = 3 }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const collections = await db.listCollections().toArray();
 
                 // Use batch parser for parameters
@@ -263,6 +255,6 @@ export function registerWorkflowTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 }

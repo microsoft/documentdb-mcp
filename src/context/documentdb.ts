@@ -15,14 +15,45 @@ let currentConnectionString: string | null = null;
 let connectionStartTime: Date | null = null;
 
 /**
- * Initialize MongoDB client connection using default config
+ * Set (or override) the connection string without immediately connecting
  */
-export async function initializeDocumentDBContext(): Promise<DocumentDBContext> {
+export function setDocumentDBUri(uri: string): void {
+    currentConnectionString = uri;
+}
+
+/**
+ * Initialize MongoDB client connection using current or default config.
+ * If no connection string is available yet, returns a non-connected context.
+ */
+export async function initializeDocumentDBContext(lazy: boolean = true): Promise<DocumentDBContext> {
     if (!mongoClient) {
-        mongoClient = new MongoClient(config.documentDbUri);
-        await mongoClient.connect();
-        currentConnectionString = config.documentDbUri;
-        connectionStartTime = new Date();
+        const uri = currentConnectionString || config.documentDbUri;
+        if (!uri) {
+            if (lazy) {
+                // No uri yet; return disconnected context and wait for explicit connect later.
+                return { client: undefined, connected: false };
+            } else {
+                throw new Error('No DocumentDB URI configured');
+            }
+        }
+        if (lazy) {
+            // Attempt connection but swallow errors
+            try {
+                mongoClient = new MongoClient(uri);
+                await mongoClient.connect();
+                currentConnectionString = uri;
+                connectionStartTime = new Date();
+            } catch (e) {
+                // Connection failed; keep client null for later retry.
+                mongoClient = null;
+                return { client: undefined, connected: false };
+            }
+        } else {
+            mongoClient = new MongoClient(uri);
+            await mongoClient.connect();
+            currentConnectionString = uri;
+            connectionStartTime = new Date();
+        }
     }
     return {
         client: mongoClient ?? undefined,
@@ -75,7 +106,7 @@ export async function connectToDocumentDB(
         if (mongoClient) {
             try {
                 await mongoClient.close();
-            } catch (closeError) {
+            } catch {
                 // Ignore close errors
             }
             mongoClient = null;
@@ -152,7 +183,7 @@ export async function getConnectionStatus(): Promise<{
             connection_duration: connectionDuration,
             server_info: serverInfo,
         };
-    } catch (error) {
+    } catch {
         // Connection is dead, clean up
         mongoClient = null;
         currentConnectionString = null;
@@ -196,4 +227,27 @@ export function createDocumentDBContextWrapper(client?: MongoClient): DocumentDB
     }
 
     return getDocumentDBContext();
+}
+
+/**
+ * Ensure MongoDB connection is established
+ */
+export async function ensureConnected(): Promise<DocumentDBContext> {
+    const ctx = await initializeDocumentDBContext(true);
+    if (ctx.connected) return ctx;
+    // If still not connected, try explicit connect if we have a URI recorded
+    const uri = currentConnectionString || config.documentDbUri;
+    if (!uri) {
+        return { client: undefined, connected: false };
+    }
+    try {
+        mongoClient = new MongoClient(uri);
+        await mongoClient.connect();
+        currentConnectionString = uri;
+        connectionStartTime = new Date();
+        return { client: mongoClient, connected: true };
+    } catch {
+        // remain disconnected
+        return { client: undefined, connected: false };
+    }
 }

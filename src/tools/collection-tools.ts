@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { z } from 'zod';
 import { getDocumentDBContext } from '../context/documentdb';
+import { withDbGuard } from './utils/dbGuard';
 import { parseParams } from './utils/paramParser';
 
 /**
@@ -23,23 +24,12 @@ export function registerCollectionTools(server: McpServer): void {
                 collection_name: z.string().describe('Name of the collection'),
             },
         },
-        async ({ db_name, collection_name }) => {
+        withDbGuard(async ({ db_name, collection_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const stats = await db.command({ collStats: collection_name });
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(stats, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -55,7 +45,7 @@ export function registerCollectionTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Rename collection tool
@@ -70,21 +60,15 @@ export function registerCollectionTools(server: McpServer): void {
                 new_collection_name: z.string().describe('New name for the collection'),
             },
         },
-        async ({ db_name, collection_name, new_collection_name }) => {
+        withDbGuard(async ({ db_name, collection_name, new_collection_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const collection = db.collection(collection_name);
                 await collection.rename(new_collection_name, { dropTarget: false });
                 return {
                     content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify({ message: 'Collection renamed successfully' }, null, 2),
-                        },
+                        { type: 'text', text: JSON.stringify({ message: 'Collection renamed successfully' }, null, 2) },
                     ],
                 };
             } catch (error) {
@@ -102,7 +86,7 @@ export function registerCollectionTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Drop collection tool
@@ -116,20 +100,14 @@ export function registerCollectionTools(server: McpServer): void {
                 collection_name: z.string().describe('Name of the collection to drop'),
             },
         },
-        async ({ db_name, collection_name }) => {
+        withDbGuard(async ({ db_name, collection_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 await db.dropCollection(collection_name);
                 return {
                     content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify({ message: 'Collection dropped successfully' }, null, 2),
-                        },
+                        { type: 'text', text: JSON.stringify({ message: 'Collection dropped successfully' }, null, 2) },
                     ],
                 };
             } catch (error) {
@@ -147,7 +125,7 @@ export function registerCollectionTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Sample documents tool
@@ -166,12 +144,9 @@ export function registerCollectionTools(server: McpServer): void {
                     .describe('Number of documents to sample (number or numeric string)'),
             },
         },
-        async ({ db_name, collection_name, sample_size = 10 }) => {
+        withDbGuard(async ({ db_name, collection_name, sample_size = 10 }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
+                const { client } = getDocumentDBContext();
                 const parsed = parseParams([
                     {
                         raw: sample_size,
@@ -181,18 +156,10 @@ export function registerCollectionTools(server: McpServer): void {
                     },
                 ]);
                 const normalizedSize = parsed.sample_size as number;
-                const collection = client.db(db_name).collection(collection_name);
+                const collection = client!.db(db_name).collection(collection_name);
                 const pipeline = [{ $sample: { size: normalizedSize } }];
                 const documents = await collection.aggregate(pipeline).toArray();
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(documents, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(documents, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -208,6 +175,6 @@ export function registerCollectionTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 }

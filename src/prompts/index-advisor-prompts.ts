@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
 // Core prompt text for find query optimization / index advising
 const FIND_QUERY_OPTIMIZER_PROMPT = `You are a MongoDB find query optimization assistant.
