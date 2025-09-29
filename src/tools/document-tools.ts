@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { z } from 'zod';
 import { getDocumentDBContext } from '../context/documentdb';
+import { withDbGuard } from './utils/dbGuard';
 import { parseParams, parseUpdate } from './utils/paramParser';
 
 /**
@@ -34,15 +35,10 @@ export function registerDocumentTools(server: McpServer): void {
                     ),
             },
         },
-        async ({ db_name, collection_name, query = {}, options }) => {
+        withDbGuard(async ({ db_name, collection_name, query = {}, options }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: query,
-                        expected: 'object',
-                        outKey: 'query',
-                        options: { fieldName: 'query' },
-                    },
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
                     {
                         raw: options,
                         expected: 'object',
@@ -51,7 +47,6 @@ export function registerDocumentTools(server: McpServer): void {
                     },
                 ]);
                 const parsedQuery = parsed.query as Record<string, unknown>;
-                // Derive options with defaults
                 const o: any = parsed.options || {};
                 let limitVal = 100;
                 let skipVal = 0;
@@ -65,44 +60,24 @@ export function registerDocumentTools(server: McpServer): void {
                 }
                 const sortVal = o.sort !== undefined ? o.sort : undefined;
                 const projectionVal = o.projection !== undefined ? o.projection : undefined;
-
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
-
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const findOptions: any = {};
                 if (sortVal !== undefined) findOptions.sort = sortVal;
                 if (projectionVal !== undefined) findOptions.projection = projectionVal;
-                if (skipVal) findOptions.skip = skipVal; // skip=0 omitted
-                if (limitVal) findOptions.limit = limitVal; // always positive
+                if (skipVal) findOptions.skip = skipVal;
+                if (limitVal) findOptions.limit = limitVal;
                 const documents = await collection.find(parsedQuery, findOptions).toArray();
-                // totalCount intentionally ignores skip/limit (counts full match set)
                 const totalCount = await collection.countDocuments(parsedQuery);
-
                 const response = {
                     documents,
                     total_count: totalCount,
                     returned_count: documents.length,
                     has_more: skipVal + documents.length < totalCount,
                     query: parsedQuery,
-                    applied_options: {
-                        limit: limitVal,
-                        skip: skipVal,
-                        sort: sortVal,
-                        projection: projectionVal,
-                    },
+                    applied_options: { limit: limitVal, skip: skipVal, sort: sortVal, projection: projectionVal },
                 };
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(response, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -118,7 +93,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Count documents tool
@@ -136,33 +111,16 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe('Query filter in MongoDB style'),
             },
         },
-        async ({ db_name, collection_name, query = {} }) => {
+        withDbGuard(async ({ db_name, collection_name, query = {} }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: query,
-                        expected: 'object',
-                        outKey: 'query',
-                        options: { fieldName: 'query' },
-                    },
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
                 ]);
                 const parsedQuery = parsed.query as Record<string, unknown>;
-
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const count = await collection.countDocuments(parsedQuery);
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify({ count, query: parsedQuery }, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify({ count, query: parsedQuery }, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -178,7 +136,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Insert single document tool
@@ -193,31 +151,21 @@ export function registerDocumentTools(server: McpServer): void {
                 document: z.record(z.unknown()).describe('Document to insert'),
             },
         },
-        async ({ db_name, collection_name, document }) => {
+        withDbGuard(async ({ db_name, collection_name, document }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: document,
-                        expected: 'object',
-                        outKey: 'document',
-                        options: { fieldName: 'document' },
-                    },
+                    { raw: document, expected: 'object', outKey: 'document', options: { fieldName: 'document' } },
                 ]);
                 const doc = parsed.document as Record<string, unknown>;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const result = await collection.insertOne(doc);
                 const response = {
                     inserted_id: result.insertedId,
                     acknowledged: result.acknowledged,
                     inserted_count: 1,
                 };
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -233,7 +181,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Insert many documents tool
@@ -250,26 +198,17 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe('List of documents to insert'),
             },
         },
-        async ({ db_name, collection_name, documents }) => {
+        withDbGuard(async ({ db_name, collection_name, documents }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: documents,
-                        expected: 'array',
-                        outKey: 'documents',
-                        options: { fieldName: 'documents' },
-                    },
+                    { raw: documents, expected: 'array', outKey: 'documents', options: { fieldName: 'documents' } },
                 ]);
                 const docs = parsed.documents as any;
-                // basic validation each element must be object
                 if (!Array.isArray(docs) || docs.some((d) => typeof d !== 'object' || d === null || Array.isArray(d))) {
                     throw new Error('documents must be an array of JSON objects');
                 }
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const result = await collection.insertMany(docs);
                 const insertedIds = Object.values(result.insertedIds).map((id) => String(id));
                 const response = {
@@ -277,9 +216,7 @@ export function registerDocumentTools(server: McpServer): void {
                     acknowledged: result.acknowledged,
                     inserted_count: insertedIds.length,
                 };
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -295,7 +232,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Update single document tool
@@ -315,38 +252,19 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe("Create document if it doesn't exist"),
             },
         },
-        async ({ db_name, collection_name, filter, update, upsert = false }) => {
+        withDbGuard(async ({ db_name, collection_name, filter, update, upsert = false }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: filter,
-                        expected: 'object',
-                        outKey: 'filter',
-                        options: { fieldName: 'filter' },
-                    },
-                    {
-                        raw: update,
-                        outKey: 'update',
-                        custom: (r) => parseUpdate(r, { fieldName: 'update' }).value,
-                    },
-                    {
-                        raw: upsert,
-                        expected: 'boolean',
-                        outKey: 'upsert',
-                        options: { fieldName: 'upsert' },
-                    },
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
+                    { raw: update, outKey: 'update', custom: (r) => parseUpdate(r, { fieldName: 'update' }).value },
+                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
                 ]);
                 const parsedFilter = parsed.filter as Record<string, unknown>;
                 const parsedUpdate = parsed.update as Record<string, unknown>;
                 const parsedUpsert = parsed.upsert as boolean;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
-                const result = await collection.updateOne(parsedFilter, parsedUpdate, {
-                    upsert: parsedUpsert,
-                });
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
+                const result = await collection.updateOne(parsedFilter, parsedUpdate, { upsert: parsedUpsert });
                 const response = {
                     matched_count: result.matchedCount,
                     modified_count: result.modifiedCount,
@@ -369,7 +287,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Update many documents tool
@@ -389,38 +307,19 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe("Create document if it doesn't exist"),
             },
         },
-        async ({ db_name, collection_name, filter, update, upsert = false }) => {
+        withDbGuard(async ({ db_name, collection_name, filter, update, upsert = false }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: filter,
-                        expected: 'object',
-                        outKey: 'filter',
-                        options: { fieldName: 'filter' },
-                    },
-                    {
-                        raw: update,
-                        outKey: 'update',
-                        custom: (r) => parseUpdate(r, { fieldName: 'update' }).value,
-                    },
-                    {
-                        raw: upsert,
-                        expected: 'boolean',
-                        outKey: 'upsert',
-                        options: { fieldName: 'upsert' },
-                    },
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
+                    { raw: update, outKey: 'update', custom: (r) => parseUpdate(r, { fieldName: 'update' }).value },
+                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
                 ]);
                 const parsedFilter = parsed.filter as Record<string, unknown>;
                 const parsedUpdate = parsed.update as Record<string, unknown>;
                 const parsedUpsert = parsed.upsert as boolean;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
-                const result = await collection.updateMany(parsedFilter, parsedUpdate, {
-                    upsert: parsedUpsert,
-                });
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
+                const result = await collection.updateMany(parsedFilter, parsedUpdate, { upsert: parsedUpsert });
                 const response = {
                     matched_count: result.matchedCount,
                     modified_count: result.modifiedCount,
@@ -443,7 +342,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Delete one document tool
@@ -458,27 +357,16 @@ export function registerDocumentTools(server: McpServer): void {
                 filter: z.union([z.record(z.unknown()), z.string()]).describe('Query filter to find the document'),
             },
         },
-        async ({ db_name, collection_name, filter }) => {
+        withDbGuard(async ({ db_name, collection_name, filter }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: filter,
-                        expected: 'object',
-                        outKey: 'filter',
-                        options: { fieldName: 'filter' },
-                    },
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
                 ]);
                 const parsedFilter = parsed.filter as Record<string, unknown>;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const result = await collection.deleteOne(parsedFilter);
-                const response = {
-                    deleted_count: result.deletedCount,
-                    acknowledged: result.acknowledged,
-                };
+                const response = { deleted_count: result.deletedCount, acknowledged: result.acknowledged };
                 return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
@@ -495,7 +383,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Delete many documents tool
@@ -510,27 +398,16 @@ export function registerDocumentTools(server: McpServer): void {
                 filter: z.union([z.record(z.unknown()), z.string()]).describe('Query filter to find the documents'),
             },
         },
-        async ({ db_name, collection_name, filter }) => {
+        withDbGuard(async ({ db_name, collection_name, filter }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: filter,
-                        expected: 'object',
-                        outKey: 'filter',
-                        options: { fieldName: 'filter' },
-                    },
+                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
                 ]);
                 const parsedFilter = parsed.filter as Record<string, unknown>;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const result = await collection.deleteMany(parsedFilter);
-                const response = {
-                    deleted_count: result.deletedCount,
-                    acknowledged: result.acknowledged,
-                };
+                const response = { deleted_count: result.deletedCount, acknowledged: result.acknowledged };
                 return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
@@ -547,7 +424,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Aggregate pipeline tool
@@ -566,15 +443,10 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe('Allow pipeline stages to write to disk'),
             },
         },
-        async ({ db_name, collection_name, pipeline, allow_disk_use = false }) => {
+        withDbGuard(async ({ db_name, collection_name, pipeline, allow_disk_use = false }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: pipeline,
-                        expected: 'array',
-                        outKey: 'pipeline',
-                        options: { fieldName: 'pipeline' },
-                    },
+                    { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
                     {
                         raw: allow_disk_use,
                         expected: 'boolean',
@@ -585,14 +457,9 @@ export function registerDocumentTools(server: McpServer): void {
                 const parsedPipeline = parsed.pipeline as any;
                 if (!Array.isArray(parsedPipeline)) throw new Error('pipeline must be an array');
                 const parsedAllowDisk = parsed.allow_disk_use as boolean;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
-                const cursor = collection.aggregate(parsedPipeline, {
-                    allowDiskUse: parsedAllowDisk,
-                });
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
+                const cursor = collection.aggregate(parsedPipeline, { allowDiskUse: parsedAllowDisk });
                 const results = await cursor.toArray();
                 const response = { results, total_count: results.length };
                 return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
@@ -611,7 +478,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Explain aggregate query tool
@@ -627,34 +494,20 @@ export function registerDocumentTools(server: McpServer): void {
                 pipeline: z.union([z.array(z.record(z.unknown())), z.string()]).describe('List of aggregation stages'),
             },
         },
-        async ({ db_name, collection_name, pipeline }) => {
+        withDbGuard(async ({ db_name, collection_name, pipeline }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: pipeline,
-                        expected: 'array',
-                        outKey: 'pipeline',
-                        options: { fieldName: 'pipeline' },
-                    },
+                    { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
                 ]);
                 const parsedPipeline = parsed.pipeline as any;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const command = {
-                    explain: {
-                        aggregate: collection_name,
-                        pipeline: parsedPipeline,
-                        cursor: {},
-                    },
+                    explain: { aggregate: collection_name, pipeline: parsedPipeline, cursor: {} },
                     verbosity: 'executionStats',
                 };
                 const explainOutput = await db.command(command as any);
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(explainOutput, null, 2) }],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(explainOutput, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -670,7 +523,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Explain count query tool
@@ -688,33 +541,20 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe('Query filter in MongoDB style'),
             },
         },
-        async ({ db_name, collection_name, query = {} }) => {
+        withDbGuard(async ({ db_name, collection_name, query = {} }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: query,
-                        expected: 'object',
-                        outKey: 'query',
-                        options: { fieldName: 'query' },
-                    },
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
                 ]);
                 const parsedQuery = parsed.query as Record<string, unknown>;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const command = {
-                    explain: {
-                        count: collection_name,
-                        query: parsedQuery,
-                    },
+                    explain: { count: collection_name, query: parsedQuery },
                     verbosity: 'executionStats',
                 };
                 const explainOutput = await db.command(command as any);
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(explainOutput, null, 2) }],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(explainOutput, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -730,7 +570,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Explain find query tool
@@ -753,7 +593,7 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe('Consolidated find options. Fields: sort, projection, limit, skip.'),
             },
         },
-        async ({ db_name, collection_name, query = {}, options }) => {
+        withDbGuard(async ({ db_name, collection_name, query = {}, options }) => {
             try {
                 const parsed = parseParams([
                     {
@@ -783,11 +623,8 @@ export function registerDocumentTools(server: McpServer): void {
                     const sv = typeof o.skip === 'string' ? Number(o.skip) : o.skip;
                     if (Number.isFinite(sv) && sv >= 0) skipVal = sv;
                 }
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const findCmd: any = { find: collection_name, filter: parsedQuery };
                 if (sortVal !== undefined) findCmd.sort = sortVal;
                 if (limitVal !== undefined) findCmd.limit = limitVal;
@@ -830,7 +667,7 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Find and modify tool
@@ -851,41 +688,23 @@ export function registerDocumentTools(server: McpServer): void {
                     .describe('Create document if it does not exist'),
             },
         },
-        async ({ db_name, collection_name, query, update, upsert = false }) => {
+        withDbGuard(async ({ db_name, collection_name, query, update, upsert = false }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: query,
-                        expected: 'object',
-                        outKey: 'query',
-                        options: { fieldName: 'query' },
-                    },
-                    {
-                        raw: update,
-                        outKey: 'update',
-                        custom: (r) => parseUpdate(r, { fieldName: 'update' }).value,
-                    },
-                    {
-                        raw: upsert,
-                        expected: 'boolean',
-                        outKey: 'upsert',
-                        options: { fieldName: 'upsert' },
-                    },
+                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
+                    { raw: update, outKey: 'update', custom: (r) => parseUpdate(r, { fieldName: 'update' }).value },
+                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
                 ]);
                 const parsedQuery = parsed.query as Record<string, unknown>;
                 const parsedUpdate = parsed.update as Record<string, unknown>;
                 const parsedUpsert = parsed.upsert as boolean;
-
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
 
                 // findOneAndUpdate options: returnDocument: 'before' (default prior to driver v5 is 'before'; we set explicitly)
                 const result = await collection.findOneAndUpdate(parsedQuery, parsedUpdate, {
                     upsert: parsedUpsert,
-                    returnDocument: 'before' as const,
+                    returnDocument: 'before',
                 });
 
                 const response = {
@@ -897,9 +716,7 @@ export function registerDocumentTools(server: McpServer): void {
                     upsert,
                 };
 
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -915,6 +732,6 @@ export function registerDocumentTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 }

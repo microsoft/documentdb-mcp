@@ -1,5 +1,5 @@
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getDocumentDBContext } from '../context/documentdb.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp';
+import { getDocumentDBContext } from '../context/documentdb';
 
 export function registerDatabaseResources(server: McpServer) {
     // databases (list all)

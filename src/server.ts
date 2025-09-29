@@ -3,25 +3,25 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
 import express, { type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
-import { config } from './config.js';
+import { config } from './config';
 import { closeDocumentDBContext, initializeDocumentDBContext } from './context/documentdb';
-import { registerIndexAdvisorPrompts } from './prompts/index-advisor-prompts.js';
-import { registerCollectionResources } from './resources/collection-resources.js';
-import { registerDatabaseResources } from './resources/database-resources.js';
-import { registerOtherResources } from './resources/other-resources.js';
-import { registerCollectionTools } from './tools/collection-tools.js';
-import { registerConnectionTools } from './tools/connection-tools.js';
-import { registerDatabaseTools } from './tools/database-tools.js';
-import { registerDocumentTools } from './tools/document-tools.js';
-import { registerIndexTools } from './tools/index-tools.js';
-import { registerWorkflowTools } from './tools/workflow-tools.js';
+import { registerIndexAdvisorPrompts } from './prompts/index-advisor-prompts';
+import { registerCollectionResources } from './resources/collection-resources';
+import { registerDatabaseResources } from './resources/database-resources';
+import { registerOtherResources } from './resources/other-resources';
+import { registerCollectionTools } from './tools/collection-tools';
+import { registerConnectionTools } from './tools/connection-tools';
+import { registerDatabaseTools } from './tools/database-tools';
+import { registerDocumentTools } from './tools/document-tools';
+import { registerIndexTools } from './tools/index-tools';
+import { registerWorkflowTools } from './tools/workflow-tools';
 
 /**
  * Create and configure the MCP server
@@ -60,14 +60,31 @@ export function createServer(): McpServer {
     return server;
 }
 
+async function safeInitDbContext(): Promise<void> {
+    try {
+        const ctx = await initializeDocumentDBContext(true);
+        if (!ctx.connected) {
+            console.error(
+                '[DocumentDB] Context initialized in DISCONNECTED (lazy) mode; will attempt real connection when provided a URI.',
+            );
+        } else {
+            console.error('[DocumentDB] Connected to MongoDB.');
+        }
+    } catch (e) {
+        console.error(
+            '[DocumentDB] Failed to initialize context (lazy mode). Proceeding without active connection:',
+            e,
+        );
+    }
+}
+
 /**
  * Run the server with stdio transport
  */
 export async function runStdioServer(): Promise<void> {
     const server = createServer();
 
-    // Initialize DocumentDB context
-    await initializeDocumentDBContext();
+    await safeInitDbContext();
 
     // Setup cleanup on process termination
     const cleanup = async () => {
@@ -102,8 +119,7 @@ export async function runHttpServer(): Promise<void> {
     // Store transports by session ID
     const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-    // Initialize DocumentDB context once
-    await initializeDocumentDBContext();
+    await safeInitDbContext();
 
     // Handle all MCP Streamable HTTP requests (GET, POST, DELETE)
     app.all('/mcp', async (req: Request, res: Response) => {
@@ -239,7 +255,7 @@ export async function runSseServer(): Promise<void> {
 
     const transports: Record<string, SSEServerTransport> = {};
 
-    await initializeDocumentDBContext();
+    await safeInitDbContext();
 
     app.get('/sse', async (req: Request, res: Response) => {
         try {

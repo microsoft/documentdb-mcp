@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { z } from 'zod';
 import { getDocumentDBContext } from '../context/documentdb';
+import { withDbGuard } from './utils/dbGuard';
 import { parseParams } from './utils/paramParser';
 
 /**
@@ -30,45 +31,19 @@ export function registerIndexTools(server: McpServer): void {
                     .describe("Index options (e.g., {unique: true, name: 'idx'})"),
             },
         },
-        async ({ db_name, collection_name, keys, options = {} }) => {
+        withDbGuard(async ({ db_name, collection_name, keys, options = {} }) => {
             try {
                 const parsed = parseParams([
-                    {
-                        raw: keys,
-                        expected: 'object',
-                        outKey: 'keys',
-                        options: { fieldName: 'keys' },
-                    },
-                    {
-                        raw: options,
-                        expected: 'object',
-                        outKey: 'options',
-                        options: { fieldName: 'options' },
-                    },
+                    { raw: keys, expected: 'object', outKey: 'keys', options: { fieldName: 'keys' } },
+                    { raw: options, expected: 'object', outKey: 'options', options: { fieldName: 'options' } },
                 ]);
                 const parsedKeys = parsed.keys as Record<string, any>;
                 const parsedOptions = parsed.options as Record<string, any>;
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const result = await collection.createIndex(parsedKeys as any, parsedOptions as any);
-
-                const response = {
-                    index_name: result,
-                    keys: parsedKeys,
-                    options: parsedOptions,
-                };
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(response, null, 2),
-                        },
-                    ],
-                };
+                const response = { index_name: result, keys: parsedKeys, options: parsedOptions };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -84,7 +59,7 @@ export function registerIndexTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // List indexes tool
@@ -98,28 +73,13 @@ export function registerIndexTools(server: McpServer): void {
                 collection_name: z.string().describe('Name of the collection'),
             },
         },
-        async ({ db_name, collection_name }) => {
+        withDbGuard(async ({ db_name, collection_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const indexes = await collection.listIndexes().toArray();
-
-                const response = {
-                    indexes,
-                    count: indexes.length,
-                };
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(response, null, 2),
-                        },
-                    ],
-                };
+                const response = { indexes, count: indexes.length };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -135,7 +95,7 @@ export function registerIndexTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Drop index tool
@@ -150,29 +110,17 @@ export function registerIndexTools(server: McpServer): void {
                 index_name: z.string().describe('Name of the index to drop'),
             },
         },
-        async ({ db_name, collection_name, index_name }) => {
+        withDbGuard(async ({ db_name, collection_name, index_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const result = await collection.dropIndex(index_name);
-
                 const successResponse = {
                     success: true,
                     message: `Index '${index_name}' dropped successfully`,
                     data: result,
                 };
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(successResponse, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(successResponse, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -188,7 +136,7 @@ export function registerIndexTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Index stats tool
@@ -202,23 +150,12 @@ export function registerIndexTools(server: McpServer): void {
                 collection_name: z.string().describe('Name of the collection'),
             },
         },
-        async ({ db_name, collection_name }) => {
+        withDbGuard(async ({ db_name, collection_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const collection = client.db(db_name).collection(collection_name);
+                const { client } = getDocumentDBContext();
+                const collection = client!.db(db_name).collection(collection_name);
                 const stats = await collection.aggregate([{ $indexStats: {} }]).toArray();
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(stats, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -234,7 +171,7 @@ export function registerIndexTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Current operations tool (enhanced with optional filter)
@@ -250,31 +187,22 @@ export function registerIndexTools(server: McpServer): void {
                     .describe('Optional filter to narrow down the operations returned'),
             },
         },
-        async ({ ops = null }) => {
+        withDbGuard(async ({ ops = null }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
+                const { client } = getDocumentDBContext();
                 const parsed = parseParams([
                     {
                         raw: ops,
                         expected: 'object',
                         outKey: 'ops',
-                        options: {
-                            fieldName: 'ops',
-                            optional: true,
-                            treatEmptyObjectAsUndefined: true,
-                        },
+                        options: { fieldName: 'ops', optional: true, treatEmptyObjectAsUndefined: true },
                     },
                 ]);
                 const filter = parsed.ops as Record<string, any> | undefined;
                 const command: Record<string, any> = { currentOp: true };
                 if (filter) Object.assign(command, filter);
-                const response = await client.db('admin').command(command as any);
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-                };
+                const response = await client!.db('admin').command(command as any);
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -290,6 +218,6 @@ export function registerIndexTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 }

@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { config } from './config';
 import { runServer } from './server';
 
@@ -29,10 +28,19 @@ async function main(): Promise<void> {
     }
 }
 
-const argvPath = path.resolve(process.argv[1]);
-const importPath = fileURLToPath(import.meta.url);
+const argvPath = path.resolve(process.argv[1] || '');
+let shouldRun = false;
 
-if (argvPath === importPath) {
+const currentFile: string | undefined = typeof __filename !== 'undefined' ? path.resolve(__filename) : undefined;
+
+if (currentFile) {
+    shouldRun = argvPath === currentFile;
+} else {
+    // Fallback: if we cannot determine, assume direct run (safer for CLI usage)
+    shouldRun = true;
+}
+
+if (shouldRun) {
     main().catch((err) => {
         console.error('Unhandled error in main:', err);
         process.exit(1);

@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { z } from 'zod';
 import { getDocumentDBContext } from '../context/documentdb';
+import { withDbGuard } from './utils/dbGuard';
 
 /**
  * Register database-related tools
@@ -18,24 +19,13 @@ export function registerDatabaseTools(server: McpServer): void {
             title: 'List Databases',
             description: 'List all databases in the DocumentDB instance',
         },
-        async () => {
+        withDbGuard(async () => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const adminDb = client.db().admin();
+                const { client } = getDocumentDBContext();
+                const adminDb = client!.db().admin();
                 const databaseInfos = await adminDb.listDatabases();
                 const databaseNames = databaseInfos.databases.map((db) => db.name);
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(databaseNames, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(databaseNames, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -51,7 +41,7 @@ export function registerDatabaseTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Database stats tool
@@ -64,23 +54,12 @@ export function registerDatabaseTools(server: McpServer): void {
                 db_name: z.string().describe('Name of the database'),
             },
         },
-        async ({ db_name }) => {
+        withDbGuard(async ({ db_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const stats = await db.stats();
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(stats, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -96,7 +75,7 @@ export function registerDatabaseTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Get database info tool
@@ -109,15 +88,11 @@ export function registerDatabaseTools(server: McpServer): void {
                 db_name: z.string().describe('Name of the database'),
             },
         },
-        async ({ db_name }) => {
+        withDbGuard(async ({ db_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const collections = await db.listCollections().toArray();
-
                 const collectionInfos = await Promise.all(
                     collections.map(async (collection) => {
                         try {
@@ -132,20 +107,8 @@ export function registerDatabaseTools(server: McpServer): void {
                         }
                     }),
                 );
-
-                const dbInfo = {
-                    database_name: db_name,
-                    collections: collectionInfos,
-                };
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(dbInfo, null, 2),
-                        },
-                    ],
-                };
+                const dbInfo = { database_name: db_name, collections: collectionInfos };
+                return { content: [{ type: 'text', text: JSON.stringify(dbInfo, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -161,7 +124,7 @@ export function registerDatabaseTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 
     // Drop database tool
@@ -174,29 +137,17 @@ export function registerDatabaseTools(server: McpServer): void {
                 db_name: z.string().describe('Name of the database to drop'),
             },
         },
-        async ({ db_name }) => {
+        withDbGuard(async ({ db_name }) => {
             try {
-                const { client, connected } = getDocumentDBContext();
-                if (!connected || !client) {
-                    throw new Error('Not connected to any DocumentDB instance.');
-                }
-                const db = client.db(db_name);
+                const { client } = getDocumentDBContext();
+                const db = client!.db(db_name);
                 const result = await db.dropDatabase();
-
                 const successResponse = {
                     success: true,
                     message: `Database '${db_name}' dropped successfully`,
                     data: result,
                 };
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(successResponse, null, 2),
-                        },
-                    ],
-                };
+                return { content: [{ type: 'text', text: JSON.stringify(successResponse, null, 2) }] };
             } catch (error) {
                 return {
                     content: [
@@ -212,6 +163,6 @@ export function registerDatabaseTools(server: McpServer): void {
                     isError: true,
                 };
             }
-        },
+        }),
     );
 }

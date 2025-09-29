@@ -1,5 +1,5 @@
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getDocumentDBContext } from '../context/documentdb.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp';
+import { getDocumentDBContext } from '../context/documentdb';
 
 // Naming convention: snake_case aligned with tools: collection_indexes, collection_schema, etc.
 export function registerCollectionResources(server: McpServer) {
