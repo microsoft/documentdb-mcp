@@ -64,8 +64,29 @@ export async function initializeDocumentDBContext(lazy: boolean = true): Promise
 /**
  * Connect to MongoDB with a specific connection string
  */
+// Overloads: allow passing either a connection string or an existing MongoClient instance
 export async function connectToDocumentDB(
-    connectionString: string,
+    connection: string,
+    testConnection?: boolean,
+): Promise<{
+    success: boolean;
+    message: string;
+    connection_string: string;
+    connected_at: string;
+    server_info?: any;
+}>;
+export async function connectToDocumentDB(
+    connection: MongoClient,
+    testConnection?: boolean,
+): Promise<{
+    success: boolean;
+    message: string;
+    connection_string: string;
+    connected_at: string;
+    server_info?: any;
+}>;
+export async function connectToDocumentDB(
+    connection: string | MongoClient,
     testConnection: boolean = true,
 ): Promise<{
     success: boolean;
@@ -75,29 +96,57 @@ export async function connectToDocumentDB(
     server_info?: any;
 }> {
     try {
-        // Close existing connection if any
+        // Close existing connection if any (only if we're replacing with a new string / client)
         if (mongoClient) {
-            await mongoClient.close();
+            try {
+                await mongoClient.close();
+            } catch {
+                // ignore
+            }
             mongoClient = null;
         }
 
-        // Create new connection
-        mongoClient = new MongoClient(connectionString);
-        await mongoClient.connect();
-        currentConnectionString = connectionString;
+        if (typeof connection === 'string') {
+            mongoClient = new MongoClient(connection);
+            await mongoClient.connect();
+            currentConnectionString = connection;
+        } else {
+            // Caller provided an existing MongoClient (possibly already connected)
+            mongoClient = connection;
+            // Try a quick ping to verify; if it fails, attempt connect
+            let needsConnect = false;
+            try {
+                await mongoClient.db().admin().ping();
+            } catch {
+                needsConnect = true;
+            }
+            if (needsConnect) {
+                await mongoClient.connect();
+            }
+            currentConnectionString = currentConnectionString || config.documentDbUri || '<provided-client>';
+        }
         connectionStartTime = new Date();
 
         let serverInfo;
         if (testConnection) {
-            // Test the connection by getting server info
-            const adminDb = mongoClient.db().admin();
-            serverInfo = await adminDb.serverInfo();
+            try {
+                const adminDb = mongoClient!.db().admin();
+                serverInfo = await adminDb.serverInfo();
+            } catch (e) {
+                // If testConnection requested but fails, still report success with warning message
+                return {
+                    success: true,
+                    message: 'Connected, but failed to retrieve server info: ' + (e as Error).message,
+                    connection_string: currentConnectionString || '<unknown>',
+                    connected_at: connectionStartTime.toISOString(),
+                };
+            }
         }
 
         return {
             success: true,
             message: 'Successfully connected to MongoDB',
-            connection_string: connectionString,
+            connection_string: currentConnectionString || '<unknown>',
             connected_at: connectionStartTime.toISOString(),
             server_info: testConnection ? serverInfo : undefined,
         };
@@ -113,7 +162,6 @@ export async function connectToDocumentDB(
             currentConnectionString = null;
             connectionStartTime = null;
         }
-
         throw error;
     }
 }
