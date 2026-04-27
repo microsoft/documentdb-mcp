@@ -1,24 +1,21 @@
-import { ensureConnected, getDocumentDBContext } from '../../context/documentdb';
+import { type MongoClient } from 'mongodb';
+import { withDocumentDBClient } from '../../context/documentdb';
 
-/**
- * Wrap a handler so that it only executes when a DB connection is available.
- * If not connected, attempts a lazy ensureConnected(). If still disconnected, returns a standard error payload.
- */
-export function withDbGuard<Inp extends Record<string, any>>(handler: (input: Inp) => Promise<any> | any) {
-    return async (input: Inp) => {
-        // First check existing context
-        let { connected } = getDocumentDBContext();
-        if (!connected) {
-            const ctx = await ensureConnected();
-            connected = ctx.connected;
-        }
-        if (!connected) {
+export interface StatelessConnectionInput {
+    connection_string: string;
+}
+
+export function withDbGuard<Inp extends StatelessConnectionInput>(
+    handler: (input: Inp, client: MongoClient) => Promise<any> | any,
+) {
+    return async (input: Inp, _extra?: unknown): Promise<any> => {
+        if (!input.connection_string) {
             return {
                 content: [
                     {
                         type: 'text',
                         text: JSON.stringify(
-                            { error: 'Not connected to any DocumentDB instance. Use connect_mongodb first.' },
+                            { error: 'connection_string is required for stateless DocumentDB tool execution.' },
                             null,
                             2,
                         ),
@@ -27,6 +24,23 @@ export function withDbGuard<Inp extends Record<string, any>>(handler: (input: In
                 isError: true,
             };
         }
-        return handler(input);
+
+        try {
+            return await withDocumentDBClient<any>(input.connection_string, (client) => handler(input, client));
+        } catch (error) {
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify(
+                            { error: error instanceof Error ? error.message : String(error) },
+                            null,
+                            2,
+                        ),
+                    },
+                ],
+                isError: true,
+            };
+        }
     };
 }

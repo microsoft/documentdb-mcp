@@ -3,14 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { type MongoClient } from 'mongodb';
-
-export interface DocumentDBContext {
-    /** MongoDB client instance */
-    client?: MongoClient;
-    connected: boolean;
-}
-
 export interface DBInfoResponse {
     database_name: string;
     collection_names: string[];

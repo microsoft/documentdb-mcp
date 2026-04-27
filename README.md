@@ -1,94 +1,54 @@
 # DocumentDB MCP Server (TypeScript)
 
-A Model Context Protocol (MCP) server for DocumentDB/MongoDB database operations, implemented in TypeScript.
+A tools-only Model Context Protocol (MCP) server for Azure Cosmos DB for MongoDB vCore and MongoDB-compatible DocumentDB operations.
 
-## Features
+## Tool Model
 
-This MCP server provides comprehensive DocumentDB/MongoDB database operations through a set of tools organized by category:
+The server is stateless. Every tool call must include `connection_string`; the server does not keep a shared connection, expose connection tools, or fall back to `DOCUMENTDB_URI`.
 
-### Database Tools
-- `list_databases` - List all databases
-- `db_stats` - Get database statistics
-- `get_db_info` - Get database information and collection names
-- `drop_database` - Drop a database
+The MCP surface intentionally exposes tools only. Prompts and resources are not registered.
 
-### Collection Tools
-- `collection_stats` - Get collection statistics
-- `rename_collection` - Rename a collection
-- `drop_collection` - Drop a collection
-- `sample_documents` - Get sample documents from a collection
+## Tools
 
-### Document Tools
-- `find_documents` - Find documents with query, projection, sort, limit, skip
-- `count_documents` - Count documents matching a query
-- `insert_document` - Insert a single document
-- `insert_many` - Insert multiple documents
-- `update_document` - Update a single document
-- `delete_document` - Delete a single document
-- `aggregate` - Run aggregation pipelines
+### Index
 
-### Index Tools
-- `create_index` - Create an index
-- `list_indexes` - List all indexes on a collection
-- `drop_index` - Drop an index
-- `index_stats` - Get index usage statistics
-- `current_ops` - Get current database operations
+- `create_index` - Create an index on a collection.
+- `list_indexes` - List all indexes on a collection.
+- `drop_index` - Drop an index from a collection.
 
-### Workflow Tools
-- `optimize_find_query` - Analyze and optimize find queries
-- `optimize_aggregate_query` - Analyze and optimize aggregation queries  
-- `list_databases_for_generation` - List databases with metadata for query generation
-- `get_db_info_for_generation` - Get enhanced database info for query generation
+### Database
+
+- `list_databases` - List all databases. When `db_name` is provided, return collection details for that database.
+- `drop_database` - Drop a database and all its collections.
+
+### Collection
+
+- `drop_collection` - Drop a collection from a database.
+- `rename_collection` - Rename a collection.
+- `sample_documents` - Retrieve sample documents from a collection.
+- `current_ops` - Get current MongoDB operations with an optional filter.
+- `get_statistics` - Get database, collection, or index statistics through one tool.
+
+### Document
+
+- `find_documents` - Find documents with query and consolidated find options.
+- `count_documents` - Count documents matching a query.
+- `insert_documents` - Insert one document or many documents.
+- `update_documents` - Update one document by default, or all matches with `multi=true`.
+- `delete_documents` - Delete one document by default, or all matches with `multi=true`.
+- `aggregate` - Run an aggregation pipeline.
+- `find_and_modify` - Atomically find and update one document.
+- `explain_operation` - Explain `find`, `count`, or `aggregate` operations with `executionStats` verbosity.
 
 ## Installation
 
-1. Clone the repository and navigate to root directory
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file from the example:
-   ```bash
-   cp .env.example .env
-   ```
-4. Configure your DocumentDB/MongoDB connection in `.env`:
-   ```env
-   DOCUMENTDB_URI=mongodb://localhost:27017
-   ```
-
-## Usage
-
-### Development
 ```bash
-npm run dev
-```
-
-### Production
-```bash
-npm run build
-npm start
+npm install
 ```
 
 ## Configuration
 
-The server can be configured using environment variables:
-
-- `TRANSPORT` - Transport mode: "stdio" (default) or "streamable-http"
-- `DOCUMENTDB_URI` - MongoDB/DocumentDB connection string
-- `HOST` - Server host (default: "localhost", used for HTTP transport)
-- `PORT` - Server port (default: 8070, used for HTTP transport)
-
-### Transport Modes
-
-#### stdio (Default)
-The server communicates over standard input/output streams. This is the recommended mode for MCP client integration.
-
-```env
-TRANSPORT=stdio
-```
-
-#### streamable-http
-The server runs as an HTTP server implementing the MCP Streamable HTTP transport specification. This enables browser-based clients and HTTP-based integrations.
+Server transport is configured with environment variables:
 
 ```env
 TRANSPORT=streamable-http
@@ -96,64 +56,59 @@ HOST=localhost
 PORT=8070
 ```
 
-When running in HTTP mode, the server will be available at:
-- **Endpoint**: `http://localhost:8070/mcp`
-- **Methods**: GET (SSE streams), POST (requests), DELETE (session termination)
+`TRANSPORT` can be `stdio`, `sse`, or `streamable-http`.
 
-## MCP Integration
+## Usage
 
-This server implements the Model Context Protocol and can be used with any MCP-compatible client. All tools follow the MCP specification for tool calling and response formatting.
+Development:
 
-### Example Tool Call
+```bash
+npm run dev
+```
+
+Production:
+
+```bash
+npm run build
+npm start
+```
+
+## Example Tool Call
 
 ```json
 {
   "name": "find_documents",
   "arguments": {
+    "connection_string": "mongodb://localhost:27017",
     "db_name": "mydb",
     "collection_name": "users",
-    "query": {"status": "active"},
-    "limit": 10
+    "query": { "status": "active" },
+    "options": { "limit": 10 }
   }
 }
 ```
 
 ## Project Structure
 
-```
+```text
 src/
-├── main.ts              # Entry point
-├── server.ts            # MCP server setup and tool registration
-├── config.ts            # Configuration management
-├── models.ts            # TypeScript interfaces and types
-├── context/             # MongoDB client lifecycle management
+├── main.ts
+├── server.ts
+├── config.ts
+├── models.ts
+├── context/
 │   └── documentdb.ts
-└── tools/               # Tool implementations
-    ├── database.ts      # Database operations
-    ├── collection.ts    # Collection operations
-    ├── document.ts      # Document CRUD operations
-    └── index.ts         # Index management
+└── tools/
+    ├── collection-tools.ts
+    ├── database-tools.ts
+    ├── document-tools.ts
+    ├── index-tools.ts
+    └── utils/
 ```
 
 ## Error Handling
 
-All tools implement comprehensive error handling and return structured error responses when operations fail. Errors include descriptive messages to help with debugging.
-
-## TypeScript Features
-
-- Strict TypeScript configuration
-- Comprehensive type definitions
-- ESM module support
-- Proper async/await patterns
-- Error boundary handling
-
-## Dependencies
-
-- `@modelcontextprotocol/sdk` - MCP SDK for TypeScript
-- `mongodb` - Official MongoDB Node.js driver
-- `dotenv` - Environment variable management
-- `express` - Web framework for HTTP transport (when using streamable-http)
-- `cors` - CORS middleware for HTTP transport
+Tools return structured MCP error responses for validation failures, connection failures, and database operation errors.
 
 ## License
 
