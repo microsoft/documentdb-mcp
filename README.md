@@ -1,160 +1,259 @@
-# DocumentDB MCP Server (TypeScript)
+# DocumentDB MCP Server
 
-A Model Context Protocol (MCP) server for DocumentDB/MongoDB database operations, implemented in TypeScript.
+DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure Cosmos DB for MongoDB vCore and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
 
-## Features
-
-This MCP server provides comprehensive DocumentDB/MongoDB database operations through a set of tools organized by category:
-
-### Database Tools
-- `list_databases` - List all databases
-- `db_stats` - Get database statistics
-- `get_db_info` - Get database information and collection names
-- `drop_database` - Drop a database
-
-### Collection Tools
-- `collection_stats` - Get collection statistics
-- `rename_collection` - Rename a collection
-- `drop_collection` - Drop a collection
-- `sample_documents` - Get sample documents from a collection
-
-### Document Tools
-- `find_documents` - Find documents with query, projection, sort, limit, skip
-- `count_documents` - Count documents matching a query
-- `insert_document` - Insert a single document
-- `insert_many` - Insert multiple documents
-- `update_document` - Update a single document
-- `delete_document` - Delete a single document
-- `aggregate` - Run aggregation pipelines
-
-### Index Tools
-- `create_index` - Create an index
-- `list_indexes` - List all indexes on a collection
-- `drop_index` - Drop an index
-- `index_stats` - Get index usage statistics
-- `current_ops` - Get current database operations
-
-### Workflow Tools
-- `optimize_find_query` - Analyze and optimize find queries
-- `optimize_aggregate_query` - Analyze and optimize aggregation queries  
-- `list_databases_for_generation` - List databases with metadata for query generation
-- `get_db_info_for_generation` - Get enhanced database info for query generation
+Every tool call uses a configured `connection_profile`. Tools do not accept runtime database connection strings, and production deployments can use Microsoft Entra ID / OIDC backend authentication so the server does not need a database password.
 
 ## Installation
 
-1. Clone the repository and navigate to root directory
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file from the example:
-   ```bash
-   cp .env.example .env
-   ```
-4. Configure your DocumentDB/MongoDB connection in `.env`:
-   ```env
-   DOCUMENTDB_URI=mongodb://localhost:27017
-   ```
+Node.js 20 or later is required.
 
-## Usage
+Install from a packed tarball or registry package:
 
-### Development
 ```bash
-npm run dev
+npm install -g documentdb-mcp-server
+documentdb-mcp-server
 ```
 
-### Production
+Run from source:
+
 ```bash
+npm install
 npm run build
-npm start
+node dist/main.js
+```
+
+For local development:
+
+```bash
+npm install
+npm run dev
 ```
 
 ## Configuration
 
-The server can be configured using environment variables:
+Copy [.env.example](.env.example) to `.env` and adjust it for your deployment. The default transport is streamable HTTP on `http://localhost:8070/mcp`.
 
-- `TRANSPORT` - Transport mode: "stdio" (default) or "streamable-http"
-- `DOCUMENTDB_URI` - MongoDB/DocumentDB connection string
-- `HOST` - Server host (default: "localhost", used for HTTP transport)
-- `PORT` - Server port (default: 8070, used for HTTP transport)
-
-### Transport Modes
-
-#### stdio (Default)
-The server communicates over standard input/output streams. This is the recommended mode for MCP client integration.
-
-```env
-TRANSPORT=stdio
-```
-
-#### streamable-http
-The server runs as an HTTP server implementing the MCP Streamable HTTP transport specification. This enables browser-based clients and HTTP-based integrations.
+Key settings:
 
 ```env
 TRANSPORT=streamable-http
 HOST=localhost
 PORT=8070
+
+AUTH_REQUIRED=true
+ENTRA_TENANT_ID=<tenant-id>
+ENTRA_AUDIENCE=<application-client-id-or-api-audience>
+
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=120
+
+MCP_READ_ROLE_VALUES=DocumentDB.MCP.Read
+MCP_WRITE_ROLE_VALUES=DocumentDB.MCP.Write
+MCP_MANAGEMENT_ROLE_VALUES=DocumentDB.MCP.Management
+
+ENABLE_READ_TOOLS=true
+ENABLE_WRITE_TOOLS=false
+ENABLE_MANAGEMENT_TOOLS=false
+ALLOW_AGGREGATE_WRITE_STAGES=false
 ```
 
-When running in HTTP mode, the server will be available at:
-- **Endpoint**: `http://localhost:8070/mcp`
-- **Methods**: GET (SSE streams), POST (requests), DELETE (session termination)
+HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` is unauthenticated and is blocked unless `ALLOW_UNAUTHENTICATED_STDIO=true`; use it only for trusted local development.
 
-## MCP Integration
+HTTP and SSE endpoints are rate-limited before token validation. The default is 120 requests per IP per 60 seconds and can be adjusted with the `RATE_LIMIT_*` settings.
 
-This server implements the Model Context Protocol and can be used with any MCP-compatible client. All tools follow the MCP specification for tool calling and response formatting.
+## Authentication And Authorization
 
-### Example Tool Call
+The server validates incoming Entra tokens and maps configured claim values to MCP roles. Values can come from the `roles`, `groups`, or `scp` claims.
+
+Roles are hierarchical:
+
+- `read` can call read-only tools.
+- `write` can call write and read tools.
+- `management` can call management, write, and read tools.
+
+Write and management tools also require explicit capability flags. This keeps higher-impact operations unavailable by default even when a caller has the matching role.
+
+The Entra layer protects access to the MCP server. Backend database access is configured separately through connection profiles.
+
+## App Role Example
+
+For production, app roles are the clearest way to govern MCP access.
+
+Create an Entra App Registration for the MCP server/API and add app roles similar to these values:
+
+```json
+[
+  {
+    "allowedMemberTypes": ["User", "Group"],
+    "displayName": "DocumentDB MCP Read",
+    "value": "DocumentDB.MCP.Read",
+    "description": "Allows read-only MCP tools"
+  },
+  {
+    "allowedMemberTypes": ["User", "Group"],
+    "displayName": "DocumentDB MCP Write",
+    "value": "DocumentDB.MCP.Write",
+    "description": "Allows write MCP tools"
+  },
+  {
+    "allowedMemberTypes": ["User", "Group"],
+    "displayName": "DocumentDB MCP Management",
+    "value": "DocumentDB.MCP.Management",
+    "description": "Allows high-impact management MCP tools"
+  }
+]
+```
+
+Assign users or groups to these roles in the Enterprise Application. Set `ENTRA_AUDIENCE` to the application client ID or Application ID URI that your MCP clients use when requesting tokens.
+
+For manual validation with Azure CLI, request a token for the configured audience:
+
+```bash
+az login --tenant <tenant-id>
+az account get-access-token --resource <entra-audience>
+```
+
+## Connection Profiles
+
+Connection profiles are administrator-defined and selected by name in tool calls.
+
+Recommended Entra/OIDC backend profile:
+
+```env
+CONNECTION_PROFILES={"sandbox":{"authMode":"entra","endpoint":"example.mongocluster.cosmos.azure.com","tokenScope":"https://ossrdbms-aad.database.windows.net/.default","allowedHosts":["*.mongocluster.cosmos.azure.com"]}}
+```
+
+Before running locally, sign in with Azure CLI:
+
+```bash
+az login --tenant <tenant-id>
+```
+
+In Azure hosting, use managed identity or workload identity and grant that identity access to the backend database. The server uses `DefaultAzureCredential`, so the same profile shape works for local Azure CLI login and managed deployments.
+
+Legacy SCRAM profiles are still available for local or sandbox use when an administrator explicitly configures them:
+
+```env
+CONNECTION_PROFILES={"local":{"uriEnv":"DOCUMENTDB_LOCAL_URI"}}
+DOCUMENTDB_LOCAL_URI=mongodb://localhost:27017
+```
+
+You can also load profiles from a file:
+
+```env
+CONNECTION_PROFILES_FILE=/etc/documentdb-mcp/profiles.json
+```
+
+## Tools
+
+All tools require `connection_profile`.
+
+| Tool | Role | Purpose |
+| --- | --- | --- |
+| `list_databases` | read | List databases, or collections for one database. |
+| `drop_database` | management | Drop a database and all collections. |
+| `drop_collection` | management | Drop a collection. |
+| `rename_collection` | management | Rename a collection. |
+| `sample_documents` | read | Return sample documents from a collection. |
+| `current_ops` | management | Return current MongoDB operations. |
+| `get_statistics` | read | Return database, collection, or index statistics. |
+| `create_index` | management | Create an index. |
+| `list_indexes` | read | List collection indexes. |
+| `drop_index` | management | Drop an index. |
+| `find_documents` | read | Find documents with query, projection, sort, limit, and skip options. |
+| `count_documents` | read | Count documents matching a query. |
+| `insert_documents` | write | Insert one or more documents. |
+| `update_documents` | write | Update one or many documents. |
+| `delete_documents` | write | Delete one or many documents. |
+| `aggregate` | read | Run an aggregation pipeline. `$out` and `$merge` are disabled unless explicitly enabled. |
+| `find_and_modify` | write | Atomically find and update one document. |
+| `explain_operation` | read | Explain `find`, `count`, or `aggregate` with execution stats. |
+
+## MCP Client Usage
+
+For streamable HTTP, configure your MCP client with:
+
+```text
+http://<host>:8070/mcp
+```
+
+The client must send an Entra bearer token when `AUTH_REQUIRED=true`.
+
+For trusted local `stdio` testing:
+
+```env
+TRANSPORT=stdio
+AUTH_REQUIRED=false
+ALLOW_UNAUTHENTICATED_STDIO=true
+```
+
+Then configure the MCP command as:
+
+```bash
+node /absolute/path/to/documentdb-mcp/dist/main.js
+```
+
+Example read tool input:
 
 ```json
 {
-  "name": "find_documents",
-  "arguments": {
-    "db_name": "mydb",
-    "collection_name": "users",
-    "query": {"status": "active"},
-    "limit": 10
+  "connection_profile": "sandbox",
+  "db_name": "mcp_validation",
+  "collection_name": "vehicles",
+  "query": { "status": "active" },
+  "options": { "limit": 5 }
+}
+```
+
+Example write tool input, requiring both the write role and `ENABLE_WRITE_TOOLS=true`:
+
+```json
+{
+  "connection_profile": "sandbox",
+  "db_name": "mcp_validation",
+  "collection_name": "vehicles",
+  "documents": {
+    "vin": "VIN-100",
+    "make": "Contoso",
+    "model": "Test",
+    "status": "active"
   }
 }
 ```
 
-## Project Structure
+## Security Checks
 
+The server enforces these controls before opening a database connection:
+
+- HTTP/SSE authentication when `AUTH_REQUIRED=true`.
+- Per-IP rate limiting on HTTP/SSE routes before authentication.
+- MCP role checks for each tool.
+- Default-off gates for write and management tools.
+- Server-side connection profile resolution.
+- Rejection of tool inputs that omit `connection_profile`.
+- Default rejection of aggregation `$out` and `$merge` stages.
+
+Allowed and denied tool invocations are written to stderr with the `[MCP-AUDIT]` prefix. Audit records include the tool name, required role, decision, connection profile, transport, session or request IDs, and caller identity metadata when available.
+
+## Development
+
+Run tests and build before packaging:
+
+```bash
+npm test
+npm run build
 ```
-src/
-├── main.ts              # Entry point
-├── server.ts            # MCP server setup and tool registration
-├── config.ts            # Configuration management
-├── models.ts            # TypeScript interfaces and types
-├── context/             # MongoDB client lifecycle management
-│   └── documentdb.ts
-└── tools/               # Tool implementations
-    ├── database.ts      # Database operations
-    ├── collection.ts    # Collection operations
-    ├── document.ts      # Document CRUD operations
-    └── index.ts         # Index management
+
+Preview the package contents:
+
+```bash
+npm pack --dry-run
 ```
 
-## Error Handling
-
-All tools implement comprehensive error handling and return structured error responses when operations fail. Errors include descriptive messages to help with debugging.
-
-## TypeScript Features
-
-- Strict TypeScript configuration
-- Comprehensive type definitions
-- ESM module support
-- Proper async/await patterns
-- Error boundary handling
-
-## Dependencies
-
-- `@modelcontextprotocol/sdk` - MCP SDK for TypeScript
-- `mongodb` - Official MongoDB Node.js driver
-- `dotenv` - Environment variable management
-- `express` - Web framework for HTTP transport (when using streamable-http)
-- `cors` - CORS middleware for HTTP transport
+The package should contain `dist/`, [README.md](README.md), [.env.example](.env.example), [tool_list.md](tool_list.md), [LICENSE.md](LICENSE.md), and package metadata.
 
 ## License
 
-See LICENSE.md in the project root.
+See [LICENSE.md](LICENSE.md).
