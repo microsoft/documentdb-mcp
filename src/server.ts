@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 
 import { config } from './config';
 import { getRequestPrincipal, requireHttpAuthentication } from './security/auth';
+import { createRateLimitMiddleware } from './security/rateLimit';
 import { runWithRequestContext } from './security/requestContext';
 import { registerCollectionTools } from './tools/collection-tools';
 import { registerDatabaseTools } from './tools/database-tools';
@@ -64,8 +65,9 @@ export async function runHttpServer(): Promise<void> {
     const app = express();
     app.use(express.json());
     const transports: Record<string, StreamableHTTPServerTransport> = {};
+    const rateLimitMiddleware = createRateLimitMiddleware();
 
-    app.all('/mcp', requireHttpAuthentication(), async (req: Request, res: Response) => {
+    app.all('/mcp', rateLimitMiddleware, requireHttpAuthentication(), async (req: Request, res: Response) => {
         console.error(`Received ${req.method} request to /mcp`);
 
         try {
@@ -183,10 +185,11 @@ export async function runServer(): Promise<void> {
 export async function runSseServer(): Promise<void> {
     const app = express();
     app.use(express.json());
+    const rateLimitMiddleware = createRateLimitMiddleware();
 
     const transports: Record<string, SSEServerTransport> = {};
 
-    app.get('/sse', requireHttpAuthentication(), async (req: Request, res: Response) => {
+    app.get('/sse', rateLimitMiddleware, requireHttpAuthentication(), async (req: Request, res: Response) => {
         try {
             await runWithRequestContext(
                 {
@@ -215,7 +218,7 @@ export async function runSseServer(): Promise<void> {
         }
     });
 
-    app.post('/sse/messages', requireHttpAuthentication(), async (req: Request, res: Response) => {
+    app.post('/sse/messages', rateLimitMiddleware, requireHttpAuthentication(), async (req: Request, res: Response) => {
         const sessionId = req.query.sessionId as string | undefined;
         if (!sessionId || !transports[sessionId]) {
             res.status(400).end('Invalid or missing sessionId');

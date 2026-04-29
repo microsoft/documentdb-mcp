@@ -32,6 +32,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "dotenv": "^16.4.1",
     "express": "^4.18.0",
+    "express-rate-limit": "^7.5.0",
     "jose": "^5.10.0",
     "mongodb": "^6.3.0",
     "zod": "^3.25.76"

@@ -31,6 +31,11 @@ export interface MCPConfig {
         tenantId: string;
         audience: string;
     };
+    rateLimit: {
+        enabled: boolean;
+        windowMs: number;
+        maxRequests: number;
+    };
     authorization: {
         readRoleValues: string[];
         writeRoleValues: string[];
@@ -86,6 +91,11 @@ export const config: MCPConfig = {
         required: parseBoolean(process.env.AUTH_REQUIRED, true),
         tenantId: process.env.ENTRA_TENANT_ID || '',
         audience: process.env.ENTRA_AUDIENCE || process.env.ENTRA_CLIENT_ID || '',
+    },
+    rateLimit: {
+        enabled: parseBoolean(process.env.RATE_LIMIT_ENABLED, true),
+        windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
+        maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '120', 10),
     },
     authorization: {
         readRoleValues: parseList(process.env.MCP_READ_ROLE_VALUES),

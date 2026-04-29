@@ -45,6 +45,10 @@ AUTH_REQUIRED=true
 ENTRA_TENANT_ID=<tenant-id>
 ENTRA_AUDIENCE=<application-client-id-or-api-audience>
 
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=120
+
 MCP_READ_ROLE_VALUES=DocumentDB.MCP.Read
 MCP_WRITE_ROLE_VALUES=DocumentDB.MCP.Write
 MCP_MANAGEMENT_ROLE_VALUES=DocumentDB.MCP.Management
@@ -56,6 +60,8 @@ ALLOW_AGGREGATE_WRITE_STAGES=false
 ```
 
 HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` is unauthenticated and is blocked unless `ALLOW_UNAUTHENTICATED_STDIO=true`; use it only for trusted local development.
+
+HTTP and SSE endpoints are rate-limited before token validation. The default is 120 requests per IP per 60 seconds and can be adjusted with the `RATE_LIMIT_*` settings.
 
 ## Authentication And Authorization
 
@@ -222,6 +228,7 @@ Example write tool input, requiring both the write role and `ENABLE_WRITE_TOOLS=
 The server enforces these controls before opening a database connection:
 
 - HTTP/SSE authentication when `AUTH_REQUIRED=true`.
+- Per-IP rate limiting on HTTP/SSE routes before authentication.
 - MCP role checks for each tool.
 - Default-off gates for write and management tools.
 - Server-side connection profile resolution.
