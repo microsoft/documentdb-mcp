@@ -3,14 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express, { type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
 import { config } from './config';
+import { getRequestPrincipal, requireHttpAuthentication } from './security/auth';
+import { runWithRequestContext } from './security/requestContext';
 import { registerCollectionTools } from './tools/collection-tools';
 import { registerDatabaseTools } from './tools/database-tools';
 import { registerDocumentTools } from './tools/document-tools';
@@ -31,6 +33,10 @@ export function createServer(): McpServer {
 }
 
 export async function runStdioServer(): Promise<void> {
+    if (config.auth.required && !config.allowUnauthenticatedStdio) {
+        throw new Error('stdio transport is disabled when AUTH_REQUIRED=true. Set ALLOW_UNAUTHENTICATED_STDIO=true only for trusted local development.');
+    }
+
     const server = createServer();
 
     const cleanup = () => {
@@ -59,53 +65,63 @@ export async function runHttpServer(): Promise<void> {
     app.use(express.json());
     const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-    app.all('/mcp', async (req: Request, res: Response) => {
+    app.all('/mcp', requireHttpAuthentication(), async (req: Request, res: Response) => {
         console.error(`Received ${req.method} request to /mcp`);
 
         try {
-            const sessionId = req.headers['mcp-session-id'] as string | undefined;
-            let transport: StreamableHTTPServerTransport;
+            await runWithRequestContext(
+                {
+                    principal: getRequestPrincipal(req),
+                    transport: 'streamable-http',
+                    sessionId: req.headers['mcp-session-id'] as string | undefined,
+                    requestId: req.headers['x-request-id'] as string | undefined,
+                },
+                async () => {
+                    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+                    let transport: StreamableHTTPServerTransport;
 
-            if (sessionId && transports[sessionId]) {
-                transport = transports[sessionId];
-            } else if (!sessionId && req.method === 'POST' && req.body?.method === 'initialize') {
-                transport = new StreamableHTTPServerTransport({
-                    sessionIdGenerator: () => randomUUID(),
-                    onsessioninitialized: (initializedSessionId: string) => {
-                        console.error(`Session initialized with ID: ${initializedSessionId}`);
-                        transports[initializedSessionId] = transport;
-                    },
-                    onsessionclosed: (closedSessionId: string | undefined) => {
-                        if (closedSessionId && transports[closedSessionId]) {
-                            console.error(`Session closed: ${closedSessionId}`);
-                            delete transports[closedSessionId];
-                        }
-                    },
-                });
+                    if (sessionId && transports[sessionId]) {
+                        transport = transports[sessionId];
+                    } else if (!sessionId && req.method === 'POST' && req.body?.method === 'initialize') {
+                        transport = new StreamableHTTPServerTransport({
+                            sessionIdGenerator: () => randomUUID(),
+                            onsessioninitialized: (initializedSessionId: string) => {
+                                console.error(`Session initialized with ID: ${initializedSessionId}`);
+                                transports[initializedSessionId] = transport;
+                            },
+                            onsessionclosed: (closedSessionId: string | undefined) => {
+                                if (closedSessionId && transports[closedSessionId]) {
+                                    console.error(`Session closed: ${closedSessionId}`);
+                                    delete transports[closedSessionId];
+                                }
+                            },
+                        });
 
-                transport.onclose = () => {
-                    const sid = transport.sessionId;
-                    if (sid && transports[sid]) {
-                        console.error(`Transport closed for session ${sid}`);
-                        delete transports[sid];
+                        transport.onclose = () => {
+                            const sid = transport.sessionId;
+                            if (sid && transports[sid]) {
+                                console.error(`Transport closed for session ${sid}`);
+                                delete transports[sid];
+                            }
+                        };
+
+                        const server = createServer();
+                        await server.connect(transport);
+                    } else {
+                        res.status(400).json({
+                            jsonrpc: '2.0',
+                            error: {
+                                code: -32000,
+                                message: 'Bad Request: No valid session ID provided or not an initialization request',
+                            },
+                            id: null,
+                        });
+                        return;
                     }
-                };
 
-                const server = createServer();
-                await server.connect(transport);
-            } else {
-                res.status(400).json({
-                    jsonrpc: '2.0',
-                    error: {
-                        code: -32000,
-                        message: 'Bad Request: No valid session ID provided or not an initialization request',
-                    },
-                    id: null,
-                });
-                return;
-            }
-
-            await transport.handleRequest(req, res, req.body);
+                    await transport.handleRequest(req, res, req.body);
+                },
+            );
         } catch (error) {
             console.error('Error handling MCP request:', error);
             if (!res.headersSent) {
@@ -170,27 +186,36 @@ export async function runSseServer(): Promise<void> {
 
     const transports: Record<string, SSEServerTransport> = {};
 
-    app.get('/sse', async (_req: Request, res: Response) => {
+    app.get('/sse', requireHttpAuthentication(), async (req: Request, res: Response) => {
         try {
-            const transport = new SSEServerTransport('/sse/messages', res);
-            transports[transport.sessionId] = transport;
-            transport.onclose = () => {
-                const sid = transport.sessionId;
-                if (transports[sid]) {
-                    delete transports[sid];
-                    console.error(`SSE session closed: ${sid}`);
-                }
-            };
-            const server = createServer();
-            await server.connect(transport);
-            console.error(`SSE session started: ${transport.sessionId}`);
+            await runWithRequestContext(
+                {
+                    principal: getRequestPrincipal(req),
+                    transport: 'sse',
+                    requestId: req.headers['x-request-id'] as string | undefined,
+                },
+                async () => {
+                    const transport = new SSEServerTransport('/sse/messages', res);
+                    transports[transport.sessionId] = transport;
+                    transport.onclose = () => {
+                        const sid = transport.sessionId;
+                        if (transports[sid]) {
+                            delete transports[sid];
+                            console.error(`SSE session closed: ${sid}`);
+                        }
+                    };
+                    const server = createServer();
+                    await server.connect(transport);
+                    console.error(`SSE session started: ${transport.sessionId}`);
+                },
+            );
         } catch (error) {
             console.error('Failed to start SSE session', error);
             if (!res.headersSent) res.status(500).end('Failed to start SSE session');
         }
     });
 
-    app.post('/sse/messages', async (req: Request, res: Response) => {
+    app.post('/sse/messages', requireHttpAuthentication(), async (req: Request, res: Response) => {
         const sessionId = req.query.sessionId as string | undefined;
         if (!sessionId || !transports[sessionId]) {
             res.status(400).end('Invalid or missing sessionId');
@@ -198,7 +223,15 @@ export async function runSseServer(): Promise<void> {
         }
         const transport = transports[sessionId];
         try {
-            await transport.handlePostMessage(req as any, res as any, req.body);
+            await runWithRequestContext(
+                {
+                    principal: getRequestPrincipal(req),
+                    transport: 'sse',
+                    sessionId,
+                    requestId: req.headers['x-request-id'] as string | undefined,
+                },
+                async () => transport.handlePostMessage(req as any, res as any, req.body),
+            );
         } catch (error) {
             console.error('Error handling SSE message', error);
             if (!res.headersSent) res.status(500).end('Error handling message');

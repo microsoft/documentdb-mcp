@@ -1,115 +1,252 @@
-# DocumentDB MCP Server (TypeScript)
+# DocumentDB MCP Server
 
-A tools-only Model Context Protocol (MCP) server for Azure Cosmos DB for MongoDB vCore and MongoDB-compatible DocumentDB operations.
+DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure Cosmos DB for MongoDB vCore and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
 
-## Tool Model
-
-The server is stateless. Every tool call must include `connection_string`; the server does not keep a shared connection, expose connection tools, or fall back to `DOCUMENTDB_URI`.
-
-The MCP surface intentionally exposes tools only. Prompts and resources are not registered.
-
-## Tools
-
-### Index
-
-- `create_index` - Create an index on a collection.
-- `list_indexes` - List all indexes on a collection.
-- `drop_index` - Drop an index from a collection.
-
-### Database
-
-- `list_databases` - List all databases. When `db_name` is provided, return collection details for that database.
-- `drop_database` - Drop a database and all its collections.
-
-### Collection
-
-- `drop_collection` - Drop a collection from a database.
-- `rename_collection` - Rename a collection.
-- `sample_documents` - Retrieve sample documents from a collection.
-- `current_ops` - Get current MongoDB operations with an optional filter.
-- `get_statistics` - Get database, collection, or index statistics through one tool.
-
-### Document
-
-- `find_documents` - Find documents with query and consolidated find options.
-- `count_documents` - Count documents matching a query.
-- `insert_documents` - Insert one document or many documents.
-- `update_documents` - Update one document by default, or all matches with `multi=true`.
-- `delete_documents` - Delete one document by default, or all matches with `multi=true`.
-- `aggregate` - Run an aggregation pipeline.
-- `find_and_modify` - Atomically find and update one document.
-- `explain_operation` - Explain `find`, `count`, or `aggregate` operations with `executionStats` verbosity.
+Every tool call uses a configured `connection_profile`. Tools do not accept runtime database connection strings, and production deployments can use Microsoft Entra ID / OIDC backend authentication so the server does not need a database password.
 
 ## Installation
 
+Node.js 20 or later is required.
+
+Install from a packed tarball or registry package:
+
+```bash
+npm install -g documentdb-mcp-server
+documentdb-mcp-server
+```
+
+Run from source:
+
 ```bash
 npm install
+npm run build
+node dist/main.js
+```
+
+For local development:
+
+```bash
+npm install
+npm run dev
 ```
 
 ## Configuration
 
-Server transport is configured with environment variables:
+Copy [.env.example](.env.example) to `.env` and adjust it for your deployment. The default transport is streamable HTTP on `http://localhost:8070/mcp`.
+
+Key settings:
 
 ```env
 TRANSPORT=streamable-http
 HOST=localhost
 PORT=8070
+
+AUTH_REQUIRED=true
+ENTRA_TENANT_ID=<tenant-id>
+ENTRA_AUDIENCE=<application-client-id-or-api-audience>
+
+MCP_READ_ROLE_VALUES=DocumentDB.MCP.Read
+MCP_WRITE_ROLE_VALUES=DocumentDB.MCP.Write
+MCP_MANAGEMENT_ROLE_VALUES=DocumentDB.MCP.Management
+
+ENABLE_READ_TOOLS=true
+ENABLE_WRITE_TOOLS=false
+ENABLE_MANAGEMENT_TOOLS=false
+ALLOW_AGGREGATE_WRITE_STAGES=false
 ```
 
-`TRANSPORT` can be `stdio`, `sse`, or `streamable-http`.
+HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` is unauthenticated and is blocked unless `ALLOW_UNAUTHENTICATED_STDIO=true`; use it only for trusted local development.
 
-## Usage
+## Authentication And Authorization
 
-Development:
+The server validates incoming Entra tokens and maps configured claim values to MCP roles. Values can come from the `roles`, `groups`, or `scp` claims.
+
+Roles are hierarchical:
+
+- `read` can call read-only tools.
+- `write` can call write and read tools.
+- `management` can call management, write, and read tools.
+
+Write and management tools also require explicit capability flags. This keeps higher-impact operations unavailable by default even when a caller has the matching role.
+
+The Entra layer protects access to the MCP server. Backend database access is configured separately through connection profiles.
+
+## App Role Example
+
+For production, app roles are the clearest way to govern MCP access.
+
+Create an Entra App Registration for the MCP server/API and add app roles similar to these values:
+
+```json
+[
+  {
+    "allowedMemberTypes": ["User", "Group"],
+    "displayName": "DocumentDB MCP Read",
+    "value": "DocumentDB.MCP.Read",
+    "description": "Allows read-only MCP tools"
+  },
+  {
+    "allowedMemberTypes": ["User", "Group"],
+    "displayName": "DocumentDB MCP Write",
+    "value": "DocumentDB.MCP.Write",
+    "description": "Allows write MCP tools"
+  },
+  {
+    "allowedMemberTypes": ["User", "Group"],
+    "displayName": "DocumentDB MCP Management",
+    "value": "DocumentDB.MCP.Management",
+    "description": "Allows high-impact management MCP tools"
+  }
+]
+```
+
+Assign users or groups to these roles in the Enterprise Application. Set `ENTRA_AUDIENCE` to the application client ID or Application ID URI that your MCP clients use when requesting tokens.
+
+For manual validation with Azure CLI, request a token for the configured audience:
 
 ```bash
-npm run dev
+az login --tenant <tenant-id>
+az account get-access-token --resource <entra-audience>
 ```
 
-Production:
+## Connection Profiles
+
+Connection profiles are administrator-defined and selected by name in tool calls.
+
+Recommended Entra/OIDC backend profile:
+
+```env
+CONNECTION_PROFILES={"sandbox":{"authMode":"entra","endpoint":"example.mongocluster.cosmos.azure.com","tokenScope":"https://ossrdbms-aad.database.windows.net/.default","allowedHosts":["*.mongocluster.cosmos.azure.com"]}}
+```
+
+Before running locally, sign in with Azure CLI:
 
 ```bash
-npm run build
-npm start
+az login --tenant <tenant-id>
 ```
 
-## Example Tool Call
+In Azure hosting, use managed identity or workload identity and grant that identity access to the backend database. The server uses `DefaultAzureCredential`, so the same profile shape works for local Azure CLI login and managed deployments.
+
+Legacy SCRAM profiles are still available for local or sandbox use when an administrator explicitly configures them:
+
+```env
+CONNECTION_PROFILES={"local":{"uriEnv":"DOCUMENTDB_LOCAL_URI"}}
+DOCUMENTDB_LOCAL_URI=mongodb://localhost:27017
+```
+
+You can also load profiles from a file:
+
+```env
+CONNECTION_PROFILES_FILE=/etc/documentdb-mcp/profiles.json
+```
+
+## Tools
+
+All tools require `connection_profile`.
+
+| Tool | Role | Purpose |
+| --- | --- | --- |
+| `list_databases` | read | List databases, or collections for one database. |
+| `drop_database` | management | Drop a database and all collections. |
+| `drop_collection` | management | Drop a collection. |
+| `rename_collection` | management | Rename a collection. |
+| `sample_documents` | read | Return sample documents from a collection. |
+| `current_ops` | management | Return current MongoDB operations. |
+| `get_statistics` | read | Return database, collection, or index statistics. |
+| `create_index` | management | Create an index. |
+| `list_indexes` | read | List collection indexes. |
+| `drop_index` | management | Drop an index. |
+| `find_documents` | read | Find documents with query, projection, sort, limit, and skip options. |
+| `count_documents` | read | Count documents matching a query. |
+| `insert_documents` | write | Insert one or more documents. |
+| `update_documents` | write | Update one or many documents. |
+| `delete_documents` | write | Delete one or many documents. |
+| `aggregate` | read | Run an aggregation pipeline. `$out` and `$merge` are disabled unless explicitly enabled. |
+| `find_and_modify` | write | Atomically find and update one document. |
+| `explain_operation` | read | Explain `find`, `count`, or `aggregate` with execution stats. |
+
+## MCP Client Usage
+
+For streamable HTTP, configure your MCP client with:
+
+```text
+http://<host>:8070/mcp
+```
+
+The client must send an Entra bearer token when `AUTH_REQUIRED=true`.
+
+For trusted local `stdio` testing:
+
+```env
+TRANSPORT=stdio
+AUTH_REQUIRED=false
+ALLOW_UNAUTHENTICATED_STDIO=true
+```
+
+Then configure the MCP command as:
+
+```bash
+node /absolute/path/to/documentdb-mcp/dist/main.js
+```
+
+Example read tool input:
 
 ```json
 {
-  "name": "find_documents",
-  "arguments": {
-    "connection_string": "mongodb://localhost:27017",
-    "db_name": "mydb",
-    "collection_name": "users",
-    "query": { "status": "active" },
-    "options": { "limit": 10 }
+  "connection_profile": "sandbox",
+  "db_name": "mcp_validation",
+  "collection_name": "vehicles",
+  "query": { "status": "active" },
+  "options": { "limit": 5 }
+}
+```
+
+Example write tool input, requiring both the write role and `ENABLE_WRITE_TOOLS=true`:
+
+```json
+{
+  "connection_profile": "sandbox",
+  "db_name": "mcp_validation",
+  "collection_name": "vehicles",
+  "documents": {
+    "vin": "VIN-100",
+    "make": "Contoso",
+    "model": "Test",
+    "status": "active"
   }
 }
 ```
 
-## Project Structure
+## Security Checks
 
-```text
-src/
-├── main.ts
-├── server.ts
-├── config.ts
-├── models.ts
-├── context/
-│   └── documentdb.ts
-└── tools/
-    ├── collection-tools.ts
-    ├── database-tools.ts
-    ├── document-tools.ts
-    ├── index-tools.ts
-    └── utils/
+The server enforces these controls before opening a database connection:
+
+- HTTP/SSE authentication when `AUTH_REQUIRED=true`.
+- MCP role checks for each tool.
+- Default-off gates for write and management tools.
+- Server-side connection profile resolution.
+- Rejection of tool inputs that omit `connection_profile`.
+- Default rejection of aggregation `$out` and `$merge` stages.
+
+Allowed and denied tool invocations are written to stderr with the `[MCP-AUDIT]` prefix. Audit records include the tool name, required role, decision, connection profile, transport, session or request IDs, and caller identity metadata when available.
+
+## Development
+
+Run tests and build before packaging:
+
+```bash
+npm test
+npm run build
 ```
 
-## Error Handling
+Preview the package contents:
 
-Tools return structured MCP error responses for validation failures, connection failures, and database operation errors.
+```bash
+npm pack --dry-run
+```
+
+The package should contain `dist/`, [README.md](README.md), [.env.example](.env.example), [tool_list.md](tool_list.md), [LICENSE.md](LICENSE.md), and package metadata.
 
 ## License
 
-See LICENSE.md in the project root.
+See [LICENSE.md](LICENSE.md).

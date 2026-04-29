@@ -3,11 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { withDbGuard } from './utils/dbGuard';
-
-const connectionSchema = z.string().describe('MongoDB/DocumentDB connection string for this stateless tool call');
+import { connectionProfileSchema } from './utils/toolSecurity';
 
 export function registerDatabaseTools(server: McpServer): void {
     server.registerTool(
@@ -17,7 +16,7 @@ export function registerDatabaseTools(server: McpServer): void {
             description:
                 'List all databases on the cluster. If db_name is provided, return that database collections with estimated document counts.',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z
                     .string()
                     .optional()
@@ -26,7 +25,7 @@ export function registerDatabaseTools(server: McpServer): void {
                     ),
             },
         },
-        withDbGuard(async ({ db_name }, client) => {
+        withDbGuard({ toolName: 'list_databases', requiredRole: 'read' }, async ({ db_name }, client) => {
             if (!db_name) {
                 const databaseInfos = await client.db().admin().listDatabases();
                 const response = {
@@ -72,11 +71,11 @@ export function registerDatabaseTools(server: McpServer): void {
             title: 'Drop Database',
             description: 'Drop a database and all its collections',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database to drop'),
             },
         },
-        withDbGuard(async ({ db_name }, client) => {
+        withDbGuard({ toolName: 'drop_database', requiredRole: 'management' }, async ({ db_name }, client) => {
             const result = await client.db(db_name).dropDatabase();
             const response = {
                 success: true,

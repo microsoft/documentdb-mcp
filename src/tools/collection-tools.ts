@@ -3,12 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { withDbGuard } from './utils/dbGuard';
 import { parseParams } from './utils/paramParser';
-
-const connectionSchema = z.string().describe('MongoDB/DocumentDB connection string for this stateless tool call');
+import { connectionProfileSchema } from './utils/toolSecurity';
 
 export function registerCollectionTools(server: McpServer): void {
     server.registerTool(
@@ -17,19 +16,22 @@ export function registerCollectionTools(server: McpServer): void {
             title: 'Drop Collection',
             description: 'Drop a collection from a database',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection to drop'),
             },
         },
-        withDbGuard(async ({ db_name, collection_name }, client) => {
-            await client.db(db_name).dropCollection(collection_name);
-            return {
-                content: [
-                    { type: 'text', text: JSON.stringify({ message: 'Collection dropped successfully' }, null, 2) },
-                ],
-            };
-        }),
+        withDbGuard(
+            { toolName: 'drop_collection', requiredRole: 'management' },
+            async ({ db_name, collection_name }, client) => {
+                await client.db(db_name).dropCollection(collection_name);
+                return {
+                    content: [
+                        { type: 'text', text: JSON.stringify({ message: 'Collection dropped successfully' }, null, 2) },
+                    ],
+                };
+            },
+        ),
     );
 
     server.registerTool(
@@ -38,20 +40,23 @@ export function registerCollectionTools(server: McpServer): void {
             title: 'Rename Collection',
             description: 'Rename a collection',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection to rename'),
                 new_collection_name: z.string().describe('New name for the collection'),
             },
         },
-        withDbGuard(async ({ db_name, collection_name, new_collection_name }, client) => {
-            await client.db(db_name).collection(collection_name).rename(new_collection_name, { dropTarget: false });
-            return {
-                content: [
-                    { type: 'text', text: JSON.stringify({ message: 'Collection renamed successfully' }, null, 2) },
-                ],
-            };
-        }),
+        withDbGuard(
+            { toolName: 'rename_collection', requiredRole: 'management' },
+            async ({ db_name, collection_name, new_collection_name }, client) => {
+                await client.db(db_name).collection(collection_name).rename(new_collection_name, { dropTarget: false });
+                return {
+                    content: [
+                        { type: 'text', text: JSON.stringify({ message: 'Collection renamed successfully' }, null, 2) },
+                    ],
+                };
+            },
+        ),
     );
 
     server.registerTool(
@@ -61,7 +66,7 @@ export function registerCollectionTools(server: McpServer): void {
             description:
                 'Retrieve sample documents from a collection. Useful for understanding data schema and query generation.',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection'),
                 sample_size: z
@@ -70,22 +75,25 @@ export function registerCollectionTools(server: McpServer): void {
                     .describe('Number of documents to sample (number or numeric string)'),
             },
         },
-        withDbGuard(async ({ db_name, collection_name, sample_size = 10 }, client) => {
-            const parsed = parseParams([
-                {
-                    raw: sample_size,
-                    expected: 'int',
-                    outKey: 'sample_size',
-                    options: { fieldName: 'sample_size', nonNegative: true, defaultValue: 10 },
-                },
-            ]);
-            const documents = await client
-                .db(db_name)
-                .collection(collection_name)
-                .aggregate([{ $sample: { size: parsed.sample_size as number } }])
-                .toArray();
-            return { content: [{ type: 'text', text: JSON.stringify(documents, null, 2) }] };
-        }),
+        withDbGuard(
+            { toolName: 'sample_documents', requiredRole: 'read' },
+            async ({ db_name, collection_name, sample_size = 10 }, client) => {
+                const parsed = parseParams([
+                    {
+                        raw: sample_size,
+                        expected: 'int',
+                        outKey: 'sample_size',
+                        options: { fieldName: 'sample_size', nonNegative: true, defaultValue: 10 },
+                    },
+                ]);
+                const documents = await client
+                    .db(db_name)
+                    .collection(collection_name)
+                    .aggregate([{ $sample: { size: parsed.sample_size as number } }])
+                    .toArray();
+                return { content: [{ type: 'text', text: JSON.stringify(documents, null, 2) }] };
+            },
+        ),
     );
 
     server.registerTool(
@@ -94,14 +102,14 @@ export function registerCollectionTools(server: McpServer): void {
             title: 'Current Operations',
             description: 'Get information about current MongoDB operations',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 ops: z
                     .union([z.record(z.unknown()), z.string(), z.null()])
                     .optional()
                     .describe('Optional filter to narrow down the operations returned'),
             },
         },
-        withDbGuard(async ({ ops = null }, client) => {
+        withDbGuard({ toolName: 'current_ops', requiredRole: 'management' }, async ({ ops = null }, client) => {
             const parsed = parseParams([
                 {
                     raw: ops,
@@ -124,7 +132,7 @@ export function registerCollectionTools(server: McpServer): void {
             description:
                 'Unified statistics tool. scope=database returns db.stats(); scope=collection returns collStats; scope=index returns $indexStats usage data.',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 scope: z.enum(['database', 'collection', 'index']).describe('Which level of statistics to fetch'),
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z
@@ -133,24 +141,27 @@ export function registerCollectionTools(server: McpServer): void {
                     .describe('Name of the collection; required when scope is collection or index'),
             },
         },
-        withDbGuard(async ({ scope, db_name, collection_name }, client) => {
-            const db = client.db(db_name);
-            if (scope === 'database') {
-                const stats = await db.stats();
+        withDbGuard(
+            { toolName: 'get_statistics', requiredRole: 'read' },
+            async ({ scope, db_name, collection_name }, client) => {
+                const db = client.db(db_name);
+                if (scope === 'database') {
+                    const stats = await db.stats();
+                    return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+                }
+                if (!collection_name) {
+                    throw new Error('collection_name is required when scope is collection or index');
+                }
+                if (scope === 'collection') {
+                    const stats = await db.command({ collStats: collection_name });
+                    return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+                }
+                const stats = await db
+                    .collection(collection_name)
+                    .aggregate([{ $indexStats: {} }])
+                    .toArray();
                 return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
-            }
-            if (!collection_name) {
-                throw new Error('collection_name is required when scope is collection or index');
-            }
-            if (scope === 'collection') {
-                const stats = await db.command({ collStats: collection_name });
-                return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
-            }
-            const stats = await db
-                .collection(collection_name)
-                .aggregate([{ $indexStats: {} }])
-                .toArray();
-            return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
-        }),
+            },
+        ),
     );
 }

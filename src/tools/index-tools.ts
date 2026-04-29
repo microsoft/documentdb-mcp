@@ -3,12 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { withDbGuard } from './utils/dbGuard';
 import { parseParams } from './utils/paramParser';
-
-const connectionSchema = z.string().describe('MongoDB/DocumentDB connection string for this stateless tool call');
+import { connectionProfileSchema } from './utils/toolSecurity';
 
 export function registerIndexTools(server: McpServer): void {
     server.registerTool(
@@ -17,7 +16,7 @@ export function registerIndexTools(server: McpServer): void {
             title: 'Create Index',
             description: 'Create an index on a collection',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection'),
                 keys: z
@@ -29,18 +28,21 @@ export function registerIndexTools(server: McpServer): void {
                     .describe("Index options, e.g. { unique: true, name: 'idx' }"),
             },
         },
-        withDbGuard(async ({ db_name, collection_name, keys, options = {} }, client) => {
-            const parsed = parseParams([
-                { raw: keys, expected: 'object', outKey: 'keys', options: { fieldName: 'keys' } },
-                { raw: options, expected: 'object', outKey: 'options', options: { fieldName: 'options' } },
-            ]);
-            const indexName = await client
-                .db(db_name)
-                .collection(collection_name)
-                .createIndex(parsed.keys as any, parsed.options as any);
-            const response = { index_name: indexName, keys: parsed.keys, options: parsed.options };
-            return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
-        }),
+        withDbGuard(
+            { toolName: 'create_index', requiredRole: 'management' },
+            async ({ db_name, collection_name, keys, options = {} }, client) => {
+                const parsed = parseParams([
+                    { raw: keys, expected: 'object', outKey: 'keys', options: { fieldName: 'keys' } },
+                    { raw: options, expected: 'object', outKey: 'options', options: { fieldName: 'options' } },
+                ]);
+                const indexName = await client
+                    .db(db_name)
+                    .collection(collection_name)
+                    .createIndex(parsed.keys as any, parsed.options as any);
+                const response = { index_name: indexName, keys: parsed.keys, options: parsed.options };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+            },
+        ),
     );
 
     server.registerTool(
@@ -49,15 +51,20 @@ export function registerIndexTools(server: McpServer): void {
             title: 'List Indexes',
             description: 'List all indexes on a collection',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection'),
             },
         },
-        withDbGuard(async ({ db_name, collection_name }, client) => {
-            const indexes = await client.db(db_name).collection(collection_name).listIndexes().toArray();
-            return { content: [{ type: 'text', text: JSON.stringify({ indexes, count: indexes.length }, null, 2) }] };
-        }),
+        withDbGuard(
+            { toolName: 'list_indexes', requiredRole: 'read' },
+            async ({ db_name, collection_name }, client) => {
+                const indexes = await client.db(db_name).collection(collection_name).listIndexes().toArray();
+                return {
+                    content: [{ type: 'text', text: JSON.stringify({ indexes, count: indexes.length }, null, 2) }],
+                };
+            },
+        ),
     );
 
     server.registerTool(
@@ -66,16 +73,19 @@ export function registerIndexTools(server: McpServer): void {
             title: 'Drop Index',
             description: 'Drop an index from a collection',
             inputSchema: {
-                connection_string: connectionSchema,
+                connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection'),
                 index_name: z.string().describe('Name of the index to drop'),
             },
         },
-        withDbGuard(async ({ db_name, collection_name, index_name }, client) => {
-            const result = await client.db(db_name).collection(collection_name).dropIndex(index_name);
-            const response = { success: true, message: `Index '${index_name}' dropped successfully`, data: result };
-            return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
-        }),
+        withDbGuard(
+            { toolName: 'drop_index', requiredRole: 'management' },
+            async ({ db_name, collection_name, index_name }, client) => {
+                const result = await client.db(db_name).collection(collection_name).dropIndex(index_name);
+                const response = { success: true, message: `Index '${index_name}' dropped successfully`, data: result };
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+            },
+        ),
     );
 }
