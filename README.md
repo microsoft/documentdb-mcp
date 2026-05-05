@@ -2,33 +2,134 @@
 
 DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure Cosmos DB for MongoDB vCore and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
 
-Every tool call uses a configured `connection_profile`. Tools do not accept runtime database connection strings, and production deployments can use Microsoft Entra ID / OIDC backend authentication so the server does not need a database password.
+Every tool call uses a configured `connection_profile`. Tools never accept connection strings as MCP arguments; connections are selected only from server-side configuration. For local quickstart the server can synthesize a `default` profile from a single environment variable. For production, deployments should use Microsoft Entra ID / OIDC backend authentication so the server does not need a database password.
 
-## Installation
+## Getting Started
+
+The package has not yet been published to npm. Until then, choose one of the paths below.
+
+### Option 1 — Local connection string over stdio (fastest)
+
+Best for: local development, sandbox use, MCP clients like Copilot CLI, Claude Desktop, or VS Code that spawn an MCP server over stdio.
+
+Run directly from GitHub with `npx`:
+
+```bash
+npx -y github:microsoft/documentdb-mcp --stdio
+```
+
+Configure the server with a single environment variable:
+
+```bash
+export DOCUMENTDB_MCP_CONNECTION_STRING='mongodb://localhost:27017/myDatabase'
+```
+
+When `DOCUMENTDB_MCP_CONNECTION_STRING` is set and no other connection profiles are configured, the server creates a `default` profile from it. The `--stdio` flag selects stdio transport and permits trusted local unauthenticated stdio. To enforce read-only operation, add `--read-only`:
+
+```bash
+npx -y github:microsoft/documentdb-mcp --stdio --read-only
+```
+
+The connection string can target any MongoDB-compatible cluster — local MongoDB, Azure Cosmos DB for MongoDB vCore, or any MongoDB-API endpoint.
+
+### Option 2 — Production deployment with Entra ID
+
+Best for: shared, multi-user, or production deployments where the database password should never live on disk.
+
+```env
+TRANSPORT=streamable-http
+AUTH_REQUIRED=true
+ENTRA_TENANT_ID=<tenant-id>
+ENTRA_AUDIENCE=<application-client-id-or-api-audience>
+
+CONNECTION_PROFILES={"sandbox":{"authMode":"entra","endpoint":"<your-cluster>.mongocluster.cosmos.azure.com","tokenScope":"<your-token-scope>","allowedHosts":["*.mongocluster.cosmos.azure.com"]}}
+```
+
+See [Authentication and Authorization](#authentication-and-authorization) and [Connection Profiles](#connection-profiles) for full details.
+
+### Option 3 — From source (contributors)
 
 Node.js 20 or later is required.
 
-Install from a packed tarball or registry package:
-
 ```bash
-npm install -g documentdb-mcp-server
-documentdb-mcp-server
-```
-
-Run from source:
-
-```bash
+git clone https://github.com/microsoft/documentdb-mcp.git
+cd documentdb-mcp
 npm install
 npm run build
 node dist/main.js
 ```
 
-For local development:
+For local development with auto-reload:
 
 ```bash
 npm install
 npm run dev
 ```
+
+### MCP Client Configuration
+
+#### Copilot CLI
+
+Run `/mcp add` interactively, or edit `~/.copilot/mcp-config.json`:
+
+```json
+{
+  "mcpServers": {
+    "DocumentDB": {
+      "command": "npx",
+      "args": ["-y", "github:microsoft/documentdb-mcp", "--stdio", "--read-only"],
+      "env": {
+        "DOCUMENTDB_MCP_CONNECTION_STRING": "mongodb://localhost:27017/myDatabase"
+      }
+    }
+  }
+}
+```
+
+#### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "DocumentDB": {
+      "command": "npx",
+      "args": ["-y", "github:microsoft/documentdb-mcp", "--stdio", "--read-only"],
+      "env": {
+        "DOCUMENTDB_MCP_CONNECTION_STRING": "mongodb://localhost:27017/myDatabase"
+      }
+    }
+  }
+}
+```
+
+#### VS Code
+
+Add to your `settings.json`:
+
+```json
+{
+  "mcp.servers": {
+    "documentdb": {
+      "command": "npx",
+      "args": ["-y", "github:microsoft/documentdb-mcp", "--stdio", "--read-only"],
+      "env": {
+        "DOCUMENTDB_MCP_CONNECTION_STRING": "mongodb://localhost:27017/myDatabase"
+      }
+    }
+  }
+}
+```
+
+To enable write tools, drop `--read-only` and pass `ENABLE_WRITE_TOOLS=true` (and `ENABLE_MANAGEMENT_TOOLS=true` for management tools) in the `env` block.
+
+## CLI Flags
+
+| Flag | Effect |
+| --- | --- |
+| `--stdio` | Use stdio transport. Defaults `AUTH_REQUIRED=false` and `ALLOW_UNAUTHENTICATED_STDIO=true` so the server is usable without an Entra token in trusted local development. Both can still be overridden by environment variables. |
+| `--read-only`, `--readonly` | Disable write and management capability flags regardless of environment, including `$out`/`$merge` aggregation stages. Read tools remain available. |
 
 ## Configuration
 
@@ -57,9 +158,12 @@ ENABLE_READ_TOOLS=true
 ENABLE_WRITE_TOOLS=false
 ENABLE_MANAGEMENT_TOOLS=false
 ALLOW_AGGREGATE_WRITE_STAGES=false
+
+# Quickstart shortcut for local stdio usage. Ignored when CONNECTION_PROFILES is set.
+# DOCUMENTDB_MCP_CONNECTION_STRING=mongodb://localhost:27017/myDatabase
 ```
 
-HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` is unauthenticated and is blocked unless `ALLOW_UNAUTHENTICATED_STDIO=true`; use it only for trusted local development.
+HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` is unauthenticated and is blocked unless `ALLOW_UNAUTHENTICATED_STDIO=true` (or `--stdio` is passed without overriding env vars); use it only for trusted local development.
 
 HTTP and SSE endpoints are rate-limited before token validation. The default is 120 requests per IP per 60 seconds and can be adjusted with the `RATE_LIMIT_*` settings.
 
@@ -119,10 +223,12 @@ az account get-access-token --resource <entra-audience>
 
 Connection profiles are administrator-defined and selected by name in tool calls.
 
-Recommended Entra/OIDC backend profile:
+`connection_profile` is required in tool input by default. As a convenience for the local quickstart, when the server is running on stdio transport and exactly one profile is configured, tools may omit `connection_profile` and the single profile is used automatically. HTTP and SSE transports always require an explicit profile name.
+
+Recommended Entra/OIDC backend profile (replace `<your-token-scope>` with the OAuth resource URI documented for your DocumentDB-compatible service):
 
 ```env
-CONNECTION_PROFILES={"sandbox":{"authMode":"entra","endpoint":"example.mongocluster.cosmos.azure.com","tokenScope":"https://ossrdbms-aad.database.windows.net/.default","allowedHosts":["*.mongocluster.cosmos.azure.com"]}}
+CONNECTION_PROFILES={"sandbox":{"authMode":"entra","endpoint":"<your-cluster>.mongocluster.cosmos.azure.com","tokenScope":"<your-token-scope>","allowedHosts":["*.mongocluster.cosmos.azure.com"]}}
 ```
 
 Before running locally, sign in with Azure CLI:
@@ -145,6 +251,8 @@ You can also load profiles from a file:
 ```env
 CONNECTION_PROFILES_FILE=/etc/documentdb-mcp/profiles.json
 ```
+
+For the simplest local case, set `DOCUMENTDB_MCP_CONNECTION_STRING` instead. When `CONNECTION_PROFILES` is empty, the server synthesizes a `default` connectionString profile from this value. If `CONNECTION_PROFILES` is non-empty, this variable is ignored so administrator-defined profiles always win.
 
 ## Tools
 
