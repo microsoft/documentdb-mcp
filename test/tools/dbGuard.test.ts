@@ -102,4 +102,84 @@ describe('withDbGuard', () => {
             expect.any(Function),
         );
     });
+
+    it('auto-resolves the only profile on stdio when connection_profile is omitted', async () => {
+        resetEnv({ TRANSPORT: 'stdio', ALLOW_UNAUTHENTICATED_STDIO: 'true' });
+        const fakeClient = { db: vi.fn() };
+        const withClient = vi.fn(async (_connection: unknown, callback: (client: unknown) => unknown) =>
+            callback(fakeClient),
+        );
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }] }));
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({});
+
+        expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+        expect(handler).toHaveBeenCalledOnce();
+        expect(handler.mock.calls[0][0].connection_profile).toBe('dev');
+    });
+
+    it('does not auto-resolve a profile on streamable-http even with a single profile', async () => {
+        resetEnv();
+        vi.doMock('../../src/context/documentdb', () => ({
+            withDocumentDBClient: vi.fn(),
+        }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn();
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({});
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('connection_profile is required');
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('errors with an ambiguity message and does not enumerate profile names when multiple profiles exist on stdio', async () => {
+        resetEnv({
+            TRANSPORT: 'stdio',
+            ALLOW_UNAUTHENTICATED_STDIO: 'true',
+            CONNECTION_PROFILES: '{"alpha":{"uri":"mongodb://a:27017"},"beta":{"uri":"mongodb://b:27017"}}',
+        });
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: vi.fn() }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn();
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({});
+
+        expect(result.isError).toBe(true);
+        const body = JSON.parse(result.content[0].text);
+        expect(body.error).toMatch(/connection_profile is required/);
+        expect(body.error).not.toMatch(/alpha|beta/);
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('errors when no profiles are configured at all', async () => {
+        resetEnv({
+            TRANSPORT: 'stdio',
+            ALLOW_UNAUTHENTICATED_STDIO: 'true',
+            CONNECTION_PROFILES: '{}',
+        });
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: vi.fn() }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn();
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({});
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('No connection profile is configured');
+        expect(handler).not.toHaveBeenCalled();
+    });
 });
