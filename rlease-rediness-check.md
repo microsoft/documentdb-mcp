@@ -1,0 +1,327 @@
+# Release Readiness Check
+
+This checklist is for preparing the DocumentDB MCP server for customer release as an internal product/package. It focuses on customer safety, operability, supportability, and predictable behavior rather than public open-source process.
+
+## Must Have Before Customer Release
+
+### 1. Destructive Operation Confirmations
+
+Require explicit confirmation fields for destructive or high-impact tools.
+
+Recommended coverage:
+
+- `drop_database`
+- `drop_collection`
+- `drop_index`
+- `delete_documents` when `multi=true`
+- `update_documents` when `multi=true` and the filter is broad
+
+Example pattern:
+
+```json
+{
+  "db_name": "fleet",
+  "confirm_database_name": "fleet"
+}
+```
+
+The tool should reject the request unless the confirmation value exactly matches the target resource.
+
+### 2. Data Volume And Payload Limits
+
+Add configurable limits so one accidental request cannot overload the server or backend database.
+
+Suggested settings:
+
+```env
+MAX_FIND_LIMIT=100
+MAX_SAMPLE_SIZE=50
+MAX_INSERT_BATCH_SIZE=100
+MAX_RETURN_BYTES=1048576
+MONGODB_MAX_TIME_MS=30000
+```
+
+Apply limits to document reads, aggregation results, sampling, inserts, and returned response payloads.
+
+### 3. Per-Profile Database And Collection Restrictions
+
+Connection profiles should optionally restrict which databases and collections callers can access.
+
+Example profile shape:
+
+```json
+{
+  "prod-read": {
+    "authMode": "entra",
+    "endpoint": "example.mongocluster.cosmos.azure.com",
+    "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
+    "allowedHosts": ["*.mongocluster.cosmos.azure.com"],
+    "allowedDatabases": ["fleet"],
+    "allowedCollections": {
+      "fleet": ["vehicles", "maintenance"]
+    }
+  }
+}
+```
+
+This prevents a valid profile from being used against unintended databases or collections.
+
+### 4. Per-Profile Role And Capability Restrictions
+
+Global read, write, and management flags are useful, but customers may need different permissions per backend profile.
+
+Example profile shape:
+
+```json
+{
+  "prod-read": {
+    "authMode": "entra",
+    "endpoint": "prod.mongocluster.cosmos.azure.com",
+    "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
+    "allowedRoles": ["read"],
+    "allowWriteTools": false,
+    "allowManagementTools": false
+  },
+  "sandbox-admin": {
+    "authMode": "entra",
+    "endpoint": "sandbox.mongocluster.cosmos.azure.com",
+    "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
+    "allowedRoles": ["management"]
+  }
+}
+```
+
+This lets one MCP server safely expose multiple backends with different risk levels.
+
+### 4a. Fine-Grained Data Exposure Controls
+
+Customers should be able to precisely control what data the MCP server can expose, beyond coarse read/write/management roles. The current model gates by tool category, but customers want to gate by data scope as well.
+
+Recommended fine-grained controls (composable, per profile):
+
+- Allowed databases and collections (already covered in section 3)
+- Denied databases and collections, for explicit blocklists
+- Per-collection capability overrides (for example, `vehicles` is read-only even for write-capable callers)
+- Field-level projection allowlist or denylist, so sensitive fields like `ssn`, `email`, or `password_hash` are never returned
+- Mandatory query filter injection (for example, force `tenant_id` or `region` constraints on every query)
+- Maximum result size and document size per profile or collection
+- Allowed aggregation stages per profile, with destructive stages blocked by default
+- Allowed update operators per profile (for example, deny `$rename` or `$unset` on prod profiles)
+- Read-only mode flag at the profile level that disables all write/management tools regardless of caller role
+
+Example profile shape:
+
+```json
+{
+  "prod-support": {
+    "authMode": "entra",
+    "endpoint": "prod.mongocluster.cosmos.azure.com",
+    "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
+    "readOnly": true,
+    "allowedDatabases": ["fleet"],
+    "allowedCollections": { "fleet": ["vehicles"] },
+    "deniedFields": { "fleet.vehicles": ["owner_ssn", "owner_email"] },
+    "requiredFilter": { "fleet.vehicles": { "tenant_id": "${caller.tid}" } },
+    "maxResultDocuments": 50
+  }
+}
+```
+
+The goal is to let a customer safely expose a narrow, audited slice of their data through MCP without depending only on caller role claims. Defaults should remain restrictive, and any field/filter rule violations should fail closed with a clear error.
+
+### 5. Full-Collection Operation Protection
+
+Block broad write operations by default, especially empty filters with multi-document writes or deletes.
+
+Example confirmation pattern:
+
+```json
+{
+  "filter": {},
+  "multi": true,
+  "confirm_full_collection_operation": true
+}
+```
+
+Default behavior should reject full-collection updates/deletes unless the customer explicitly opts in.
+
+### 6. Startup Configuration Validation
+
+Validate configuration at startup and fail fast with actionable messages.
+
+Recommended validation checks:
+
+- Invalid `TRANSPORT`
+- Invalid `PORT`
+- `AUTH_REQUIRED=true` without `ENTRA_TENANT_ID`
+- `AUTH_REQUIRED=true` without `ENTRA_AUDIENCE` or `ENTRA_CLIENT_ID`
+- Malformed `CONNECTION_PROFILES`
+- Profile file path is unreadable
+- Entra profile missing `endpoint`/`uri`
+- Entra profile missing `tokenScope` or `tokenResource`
+- Invalid allowlist shape
+- Invalid role/capability shape
+
+### 7. Health And Readiness Endpoints
+
+For HTTP and SSE deployments, add operational probes.
+
+Recommended endpoints:
+
+```text
+GET /healthz
+GET /readyz
+```
+
+`/healthz` should confirm the process is alive. `/readyz` should confirm configuration is loaded and structurally valid. Avoid connecting to every customer database on every readiness probe unless this is configurable.
+
+### 8. Production Configuration Guide
+
+Add customer-facing documentation for secure production setup.
+
+Recommended topics:
+
+- Entra app registration setup
+- App role values and assignment
+- Managed identity or workload identity for backend access
+- Connection profile examples
+- Multiple backend profiles
+- How to enable write tools safely
+- How to enable management tools safely
+- Recommended defaults
+- What not to do in production
+- Audit logging behavior
+
+### 9. Troubleshooting Guide
+
+Add a support-focused troubleshooting guide for common customer issues.
+
+Recommended scenarios:
+
+- Missing bearer token
+- Wrong `ENTRA_AUDIENCE`
+- Wrong tenant ID
+- Caller has no matching role claim
+- Write tools are disabled
+- Management tools are disabled
+- Unknown connection profile
+- Backend token acquisition failure
+- Database connection failure
+- Aggregation `$out` or `$merge` blocked
+- Rate limit exceeded
+
+### 10. CI And Release Validation
+
+Every release candidate should pass automated validation.
+
+### 11. Unit Test Coverage
+
+Yes. Unit test coverage should be part of the customer release bar, especially for security gates, configuration parsing, and tool behavior.
+
+Recommended minimum coverage areas:
+
+- Authentication failures and success paths
+- Role hierarchy and capability checks
+- Connection profile resolution
+- Profile allowlists and per-profile permissions, if added
+- `withDbGuard` allow and deny behavior
+- Audit allow and deny events
+- Parameter parsing and validation helpers
+- Destructive-operation confirmations
+- Full-collection update/delete protection
+- Read limit and payload limit enforcement
+- Tool registration and required `connection_profile` input
+- Representative tool handlers for read, write, and management operations
+
+Suggested coverage goals:
+
+- 80% overall line coverage as a practical release floor
+- 90%+ coverage for security-sensitive modules
+- Explicit tests for every new safety guard before release
+
+Suggested package scripts:
+
+```json
+{
+  "test": "vitest run",
+  "test:coverage": "vitest run --coverage"
+}
+```
+
+The release pipeline should fail if coverage drops below the agreed threshold or if safety-critical tests are removed.
+
+Recommended release gate:
+
+```bash
+npm ci
+npm run build
+npm test
+npm run test:coverage
+```
+
+Also consider adding:
+
+- Format check
+- Dependency vulnerability scan
+- Static analysis / CodeQL-equivalent scan
+- Secret scanning
+- Package artifact validation
+- Smoke test against a local Mongo-compatible backend
+
+## Should Have Soon After
+
+### 1. Stable Tool Contract Documentation
+
+Document each MCP tool with:
+
+- Purpose
+- Required role
+- Required capability flag
+- Input schema
+- Output shape
+- Common failure modes
+- Example requests
+- Example responses
+
+### 2. Standardized Error Shape
+
+Return consistent error objects from tool failures.
+
+Recommended shape:
+
+```json
+{
+  "error": {
+    "code": "WRITE_TOOLS_DISABLED",
+    "message": "Write tools are disabled by server configuration."
+  }
+}
+```
+
+This helps customers and support teams diagnose issues without parsing arbitrary message text.
+
+### 3. Safe Audit Logging Contract
+
+Document and test that audit logs never include:
+
+- Access tokens
+- Authorization headers
+- Connection strings
+- Query result documents
+- Customer secrets
+- Raw credentials
+
+Audit logs should include enough context for support without leaking sensitive data.
+
+### 4. Integration Tests
+
+Add optional integration tests against a local Mongo-compatible backend.
+
+Recommended coverage:
+
+- List databases
+- Insert/find/update/delete documents
+- Index create/list/drop
+- Aggregation read behavior
+- Blocking `$out` and `$merge` by default
+- Connection profile resolution
