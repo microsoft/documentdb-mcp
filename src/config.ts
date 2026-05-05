@@ -83,12 +83,74 @@ function parseConnectionProfiles(
     }
 }
 
+function isLikelyMongoUri(value: string): boolean {
+    return value.startsWith('mongodb://') || value.startsWith('mongodb+srv://');
+}
+
+function maybeSynthesizeDefaultProfile(
+    profiles: Record<string, ConnectionProfileConfig>,
+    connectionString: string | undefined,
+): Record<string, ConnectionProfileConfig> {
+    if (!connectionString) return profiles;
+    const trimmed = connectionString.trim();
+    if (!trimmed) return profiles;
+    if (Object.keys(profiles).length > 0) {
+        return profiles;
+    }
+    if (!isLikelyMongoUri(trimmed)) {
+        throw new Error("DOCUMENTDB_MCP_CONNECTION_STRING must start with 'mongodb://' or 'mongodb+srv://'.");
+    }
+    console.error("DOCUMENTDB_MCP_CONNECTION_STRING detected; synthesized connection profile 'default'.");
+    return {
+        default: { authMode: 'connectionString', uri: trimmed },
+    };
+}
+
+interface CliFlags {
+    readOnly: boolean;
+    stdio: boolean;
+}
+
+function parseCliFlags(argv: string[]): CliFlags {
+    const flags: CliFlags = { readOnly: false, stdio: false };
+    for (const arg of argv) {
+        switch (arg) {
+            case '--read-only':
+            case '--readonly':
+                flags.readOnly = true;
+                break;
+            case '--stdio':
+                flags.stdio = true;
+                break;
+        }
+    }
+    return flags;
+}
+
+const cliFlags = parseCliFlags(process.argv.slice(2));
+
+const baseConnectionProfiles = parseConnectionProfiles(
+    process.env.CONNECTION_PROFILES,
+    process.env.CONNECTION_PROFILES_FILE,
+);
+const effectiveConnectionProfiles = maybeSynthesizeDefaultProfile(
+    baseConnectionProfiles,
+    process.env.DOCUMENTDB_MCP_CONNECTION_STRING,
+);
+
+const transport: 'stdio' | 'sse' | 'streamable-http' = cliFlags.stdio
+    ? 'stdio'
+    : (process.env.TRANSPORT as 'stdio' | 'sse' | 'streamable-http') || 'streamable-http';
+
+const authRequiredDefault = !(cliFlags.stdio && transport === 'stdio');
+const allowUnauthStdioDefault = cliFlags.stdio && transport === 'stdio';
+
 export const config: MCPConfig = {
-    transport: (process.env.TRANSPORT as 'stdio' | 'sse' | 'streamable-http') || 'streamable-http',
+    transport,
     host: process.env.HOST || 'localhost',
     port: parseInt(process.env.PORT || '8070', 10),
     auth: {
-        required: parseBoolean(process.env.AUTH_REQUIRED, true),
+        required: parseBoolean(process.env.AUTH_REQUIRED, authRequiredDefault),
         tenantId: process.env.ENTRA_TENANT_ID || '',
         audience: process.env.ENTRA_AUDIENCE || process.env.ENTRA_CLIENT_ID || '',
     },
@@ -104,10 +166,12 @@ export const config: MCPConfig = {
     },
     capabilities: {
         readTools: parseBoolean(process.env.ENABLE_READ_TOOLS, true),
-        writeTools: parseBoolean(process.env.ENABLE_WRITE_TOOLS, false),
-        managementTools: parseBoolean(process.env.ENABLE_MANAGEMENT_TOOLS, false),
-        allowWriteStagesInAggregate: parseBoolean(process.env.ALLOW_AGGREGATE_WRITE_STAGES, false),
+        writeTools: cliFlags.readOnly ? false : parseBoolean(process.env.ENABLE_WRITE_TOOLS, false),
+        managementTools: cliFlags.readOnly ? false : parseBoolean(process.env.ENABLE_MANAGEMENT_TOOLS, false),
+        allowWriteStagesInAggregate: cliFlags.readOnly
+            ? false
+            : parseBoolean(process.env.ALLOW_AGGREGATE_WRITE_STAGES, false),
     },
-    connectionProfiles: parseConnectionProfiles(process.env.CONNECTION_PROFILES, process.env.CONNECTION_PROFILES_FILE),
-    allowUnauthenticatedStdio: parseBoolean(process.env.ALLOW_UNAUTHENTICATED_STDIO, false),
+    connectionProfiles: effectiveConnectionProfiles,
+    allowUnauthenticatedStdio: parseBoolean(process.env.ALLOW_UNAUTHENTICATED_STDIO, allowUnauthStdioDefault),
 };
