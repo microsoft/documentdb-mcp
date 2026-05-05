@@ -6,29 +6,108 @@ Every tool call uses a configured `connection_profile`. Tools do not accept runt
 
 ## Installation
 
-Node.js 20 or later is required.
+Node.js 20 or later is required. The server is not yet published to a public package registry, so install it directly from this repository.
 
-Install from a packed tarball or registry package:
-
-```bash
-npm install -g documentdb-mcp-server
-documentdb-mcp-server
-```
-
-Run from source:
+### Run from source
 
 ```bash
+git clone https://github.com/microsoft/documentdb-mcp.git
+cd documentdb-mcp
 npm install
 npm run build
 node dist/main.js
 ```
 
-For local development:
+For local development with watch mode:
 
 ```bash
 npm install
 npm run dev
 ```
+
+### Run with `npx` from GitHub
+
+For MCP clients that spawn a server over stdio (Copilot CLI, Claude Desktop, VS Code), `npx` can fetch and run the server directly from this repository:
+
+```bash
+npx -y github:microsoft/documentdb-mcp
+```
+
+See [MCP Client Quickstart](#mcp-client-quickstart) for client configuration examples.
+
+## MCP Client Quickstart
+
+For local development with an MCP client, run the server over stdio with a single connection profile. The server uses an existing `CONNECTION_PROFILES` JSON value (or a file via `CONNECTION_PROFILES_FILE`) to choose the backend; tools never accept connection strings as MCP arguments.
+
+Set these environment variables in the client config below to match your environment:
+
+- `TRANSPORT=stdio` — talk to the MCP client over stdio.
+- `ALLOW_UNAUTHENTICATED_STDIO=true` — local stdio is unauthenticated; only enable on a trusted machine.
+- `CONNECTION_PROFILES` — a JSON map of administrator-defined profiles. Tools reference one by name via the `connection_profile` argument.
+
+### Copilot CLI
+
+Run `/mcp add` interactively, or edit `~/.copilot/mcp-config.json`:
+
+```json
+{
+  "mcpServers": {
+    "DocumentDB": {
+      "command": "npx",
+      "args": ["-y", "github:microsoft/documentdb-mcp"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "ALLOW_UNAUTHENTICATED_STDIO": "true",
+        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}"
+      }
+    }
+  }
+}
+```
+
+In tool calls, set `connection_profile` to `"local"` (or whatever profile name you defined).
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "DocumentDB": {
+      "command": "npx",
+      "args": ["-y", "github:microsoft/documentdb-mcp"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "ALLOW_UNAUTHENTICATED_STDIO": "true",
+        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}"
+      }
+    }
+  }
+}
+```
+
+### VS Code
+
+Add to `settings.json`:
+
+```json
+{
+  "mcp.servers": {
+    "documentdb": {
+      "command": "npx",
+      "args": ["-y", "github:microsoft/documentdb-mcp"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "ALLOW_UNAUTHENTICATED_STDIO": "true",
+        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}"
+      }
+    }
+  }
+}
+```
+
+To enable write or management tools, also set `"ENABLE_WRITE_TOOLS": "true"` and/or `"ENABLE_MANAGEMENT_TOOLS": "true"` in the `env` block. By default only read tools are exposed.
 
 ## Configuration
 
