@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
+import { serializeResponse } from './utils/limits';
 import { connectionProfileSchema } from './utils/toolSecurity';
 
 export function registerDatabaseTools(server: McpServer): void {
@@ -36,7 +37,7 @@ export function registerDatabaseTools(server: McpServer): void {
                         empty: db.empty,
                     })),
                 };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             }
 
             const db = client.db(db_name);
@@ -55,14 +56,7 @@ export function registerDatabaseTools(server: McpServer): void {
                     }
                 }),
             );
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: JSON.stringify({ database_name: db_name, collections: collectionInfos }, null, 2),
-                    },
-                ],
-            };
+            return serializeResponse({ database_name: db_name, collections: collectionInfos });
         }),
     );
 
@@ -90,7 +84,7 @@ export function registerDatabaseTools(server: McpServer): void {
                 message: `Database '${db_name}' dropped successfully`,
                 data: result,
             };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );

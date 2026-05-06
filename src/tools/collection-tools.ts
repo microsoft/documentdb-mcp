@@ -5,8 +5,10 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { config } from '../config';
 import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
+import { clampPositiveInt, maxTimeMSOption, serializeResponse } from './utils/limits';
 import { parseParams } from './utils/paramParser';
 import { connectionProfileSchema } from './utils/toolSecurity';
 
@@ -33,11 +35,7 @@ export function registerCollectionTools(server: McpServer): void {
             async ({ db_name, collection_name, confirm_collection_name }, client) => {
                 assertDestructiveConfirmation('confirm_collection_name', collection_name, confirm_collection_name);
                 await client.db(db_name).dropCollection(collection_name);
-                return {
-                    content: [
-                        { type: 'text', text: JSON.stringify({ message: 'Collection dropped successfully' }, null, 2) },
-                    ],
-                };
+                return serializeResponse({ message: 'Collection dropped successfully' });
             },
         ),
     );
@@ -58,11 +56,7 @@ export function registerCollectionTools(server: McpServer): void {
             { toolName: 'rename_collection', requiredRole: 'management' },
             async ({ db_name, collection_name, new_collection_name }, client) => {
                 await client.db(db_name).collection(collection_name).rename(new_collection_name, { dropTarget: false });
-                return {
-                    content: [
-                        { type: 'text', text: JSON.stringify({ message: 'Collection renamed successfully' }, null, 2) },
-                    ],
-                };
+                return serializeResponse({ message: 'Collection renamed successfully' });
             },
         ),
     );
@@ -94,12 +88,18 @@ export function registerCollectionTools(server: McpServer): void {
                         options: { fieldName: 'sample_size', nonNegative: true, defaultValue: 10 },
                     },
                 ]);
+                // Clamp sample size to MAX_SAMPLE_SIZE so a single call cannot scan unbounded data.
+                const sampleSize = clampPositiveInt(parsed.sample_size as number, {
+                    maxValue: config.limits.maxSampleSize,
+                    defaultValue: 10,
+                    fieldName: 'sample_size',
+                });
                 const documents = await client
                     .db(db_name)
                     .collection(collection_name)
-                    .aggregate([{ $sample: { size: parsed.sample_size as number } }])
+                    .aggregate([{ $sample: { size: sampleSize } }], maxTimeMSOption())
                     .toArray();
-                return { content: [{ type: 'text', text: JSON.stringify(documents, null, 2) }] };
+                return serializeResponse(documents);
             },
         ),
     );
@@ -129,7 +129,7 @@ export function registerCollectionTools(server: McpServer): void {
             const command: Record<string, unknown> = { currentOp: true };
             if (parsed.ops) Object.assign(command, parsed.ops);
             const response = await client.db('admin').command(command as any);
-            return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+            return serializeResponse(response);
         }),
     );
 
@@ -155,20 +155,20 @@ export function registerCollectionTools(server: McpServer): void {
                 const db = client.db(db_name);
                 if (scope === 'database') {
                     const stats = await db.stats();
-                    return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+                    return serializeResponse(stats);
                 }
                 if (!collection_name) {
                     throw new Error('collection_name is required when scope is collection or index');
                 }
                 if (scope === 'collection') {
                     const stats = await db.command({ collStats: collection_name });
-                    return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+                    return serializeResponse(stats);
                 }
                 const stats = await db
                     .collection(collection_name)
-                    .aggregate([{ $indexStats: {} }])
+                    .aggregate([{ $indexStats: {} }], maxTimeMSOption())
                     .toArray();
-                return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+                return serializeResponse(stats);
             },
         ),
     );

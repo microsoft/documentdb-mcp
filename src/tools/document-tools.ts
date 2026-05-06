@@ -7,6 +7,12 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { config } from '../config';
 import { withDbGuard } from './utils/dbGuard';
+import {
+    assertBatchSizeWithinLimit,
+    clampPositiveInt,
+    maxTimeMSOption,
+    serializeResponse,
+} from './utils/limits';
 import { parseParams, parseUpdate } from './utils/paramParser';
 import { connectionProfileSchema } from './utils/toolSecurity';
 const objectOrStringSchema = z.union([z.record(z.unknown()), z.string()]);
@@ -76,11 +82,20 @@ export function registerDocumentTools(server: McpServer): void {
                 ]);
                 const parsedQuery = parsed.query as Record<string, unknown>;
                 const rawOptions = (parsed.options || {}) as Record<string, any>;
-                const findOptions = normalizeFindOptions({ limit: 100, skip: 0, ...rawOptions });
+                const findOptions = normalizeFindOptions({ skip: 0, ...rawOptions });
+                // Clamp limit to MAX_FIND_LIMIT so a single call cannot pull millions of docs.
+                const maxLimit = config.limits.maxFindLimit;
+                findOptions.limit = clampPositiveInt(findOptions.limit, {
+                    maxValue: maxLimit,
+                    defaultValue: maxLimit,
+                    fieldName: 'options.limit',
+                });
                 const collection = client.db(db_name).collection(collection_name);
-                const documents = await collection.find(parsedQuery, findOptions).toArray();
-                const totalCount = await collection.countDocuments(parsedQuery);
-                const limit = typeof findOptions.limit === 'number' ? findOptions.limit : 100;
+                const documents = await collection
+                    .find(parsedQuery, { ...findOptions, ...maxTimeMSOption() })
+                    .toArray();
+                const totalCount = await collection.countDocuments(parsedQuery, maxTimeMSOption());
+                const limit = typeof findOptions.limit === 'number' ? findOptions.limit : maxLimit;
                 const skip = typeof findOptions.skip === 'number' ? findOptions.skip : 0;
                 const response = {
                     documents,
@@ -90,7 +105,7 @@ export function registerDocumentTools(server: McpServer): void {
                     query: parsedQuery,
                     applied_options: { ...findOptions, limit, skip },
                 };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );
@@ -114,8 +129,11 @@ export function registerDocumentTools(server: McpServer): void {
                     { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
                 ]);
                 const parsedQuery = parsed.query as Record<string, unknown>;
-                const count = await client.db(db_name).collection(collection_name).countDocuments(parsedQuery);
-                return { content: [{ type: 'text', text: JSON.stringify({ count, query: parsedQuery }, null, 2) }] };
+                const count = await client
+                    .db(db_name)
+                    .collection(collection_name)
+                    .countDocuments(parsedQuery, maxTimeMSOption());
+                return serializeResponse({ count, query: parsedQuery });
             },
         ),
     );
@@ -150,6 +168,7 @@ export function registerDocumentTools(server: McpServer): void {
                     if (parsedDocuments.some((doc) => typeof doc !== 'object' || doc === null || Array.isArray(doc))) {
                         throw new Error('documents array must contain JSON objects only');
                     }
+                    assertBatchSizeWithinLimit(parsedDocuments.length, 'documents');
                     const result = await collection.insertMany(parsedDocuments as Record<string, unknown>[]);
                     const insertedIds = Object.values(result.insertedIds).map((id) => String(id));
                     const response = {
@@ -157,7 +176,7 @@ export function registerDocumentTools(server: McpServer): void {
                         acknowledged: result.acknowledged,
                         inserted_count: insertedIds.length,
                     };
-                    return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                    return serializeResponse(response);
                 }
 
                 if (typeof parsedDocuments !== 'object' || parsedDocuments === null) {
@@ -169,7 +188,7 @@ export function registerDocumentTools(server: McpServer): void {
                     acknowledged: result.acknowledged,
                     inserted_count: 1,
                 };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );
@@ -220,7 +239,7 @@ export function registerDocumentTools(server: McpServer): void {
                     acknowledged: result.acknowledged,
                     multi: parsed.multi,
                 };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );
@@ -258,7 +277,7 @@ export function registerDocumentTools(server: McpServer): void {
                     acknowledged: result.acknowledged,
                     multi: parsed.multi,
                 };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );
@@ -295,13 +314,12 @@ export function registerDocumentTools(server: McpServer): void {
                 const results = await client
                     .db(db_name)
                     .collection(collection_name)
-                    .aggregate(parsed.pipeline as any[], { allowDiskUse: parsed.allow_disk_use as boolean })
+                    .aggregate(parsed.pipeline as any[], {
+                        allowDiskUse: parsed.allow_disk_use as boolean,
+                        ...maxTimeMSOption(),
+                    })
                     .toArray();
-                return {
-                    content: [
-                        { type: 'text', text: JSON.stringify({ results, total_count: results.length }, null, 2) },
-                    ],
-                };
+                return serializeResponse({ results, total_count: results.length });
             },
         ),
     );
@@ -342,6 +360,7 @@ export function registerDocumentTools(server: McpServer): void {
                             upsert: parsed.upsert as boolean,
                             returnDocument: 'before',
                             includeResultMetadata: true,
+                            ...maxTimeMSOption(),
                         } as any,
                     );
                 const metadata = result as any;
@@ -355,7 +374,7 @@ export function registerDocumentTools(server: McpServer): void {
                     update: parsed.update,
                     upsert: parsed.upsert,
                 };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );
@@ -396,7 +415,7 @@ export function registerDocumentTools(server: McpServer): void {
                         verbosity: 'executionStats',
                     };
                     const explain = await db.command(command as any);
-                    return { content: [{ type: 'text', text: JSON.stringify(explain, null, 2) }] };
+                    return serializeResponse(explain);
                 }
 
                 const parsed = parseParams([
@@ -420,10 +439,17 @@ export function registerDocumentTools(server: McpServer): void {
                         verbosity: 'executionStats',
                     };
                     const explain = await db.command(command as any);
-                    return { content: [{ type: 'text', text: JSON.stringify(explain, null, 2) }] };
+                    return serializeResponse(explain);
                 }
 
                 const findOptions = normalizeFindOptions(parsed.options as Record<string, any> | undefined);
+                if (findOptions.limit !== undefined) {
+                    findOptions.limit = clampPositiveInt(findOptions.limit, {
+                        maxValue: config.limits.maxFindLimit,
+                        defaultValue: config.limits.maxFindLimit,
+                        fieldName: 'options.limit',
+                    });
+                }
                 const findCommand: Record<string, any> = { find: collection_name, filter: parsedQuery };
                 if (findOptions.sort !== undefined) findCommand.sort = findOptions.sort;
                 if (findOptions.projection !== undefined) findCommand.projection = findOptions.projection;
@@ -431,14 +457,7 @@ export function registerDocumentTools(server: McpServer): void {
                 if (findOptions.skip !== undefined) findCommand.skip = findOptions.skip;
                 const command = { explain: findCommand, verbosity: 'executionStats' };
                 const explain = await db.command(command as any);
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify({ options_applied: findOptions, explain }, null, 2),
-                        },
-                    ],
-                };
+                return serializeResponse({ options_applied: findOptions, explain });
             },
         ),
     );

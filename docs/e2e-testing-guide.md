@@ -257,6 +257,19 @@ Audit logs must NOT include:
 
 If any of these appear, treat it as a release blocker and patch the offending log site.
 
+## 7a. Data Volume And Payload Limits Verification
+
+Each check restarts the server with a single env var lowered so the limit fires deterministically against the local container. After each check, restore the default value before continuing.
+
+1. **`MAX_FIND_LIMIT` clamp.** Set `MAX_FIND_LIMIT=10`, restart, then call `find_documents` with `options: { "limit": 1000 }` against a collection that has > 100 documents. Expect `applied_options.limit === 10` and `documents.length <= 10`.
+2. **`MAX_SAMPLE_SIZE` clamp.** Set `MAX_SAMPLE_SIZE=5`, restart, then call `sample_documents` with `sample_size: 999`. Expect at most 5 documents returned.
+3. **`MAX_INSERT_BATCH_SIZE` deny.** Set `MAX_INSERT_BATCH_SIZE=5`, restart, then call `insert_documents` with a 6-element JSON array. Expect `isError: true` with a message containing `exceeds the maximum batch size of 5`. Confirm via the backend that no documents were inserted.
+4. **`MAX_RETURN_BYTES` deny.** Set `MAX_RETURN_BYTES=1024`, restart, then call `find_documents` against a collection whose serialized response is known to exceed 1 KiB. Expect `isError: true` with a message containing `exceeds maximum`.
+5. **`MONGODB_MAX_TIME_MS` deny.** Set `MONGODB_MAX_TIME_MS=1`, restart, then call `aggregate` with a deliberately expensive pipeline (e.g. `[{ "$group": { "_id": "$status", "n": { "$sum": 1 } } }]`) on a non-trivial collection. Expect a backend timeout error surfaced as `isError: true`.
+6. **Startup hard-cap rejection.** Set `MAX_INSERT_BATCH_SIZE=25001` and start the server. Expect startup to fail with a message naming the Azure DocumentDB hard limit. Restore the value.
+
+If any of the above does not behave as expected, the limit is not wired and must be fixed before release.
+
 ## 8. Cleanup
 
 Stop and remove the local backend:
