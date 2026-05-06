@@ -152,6 +152,16 @@ describe('registered DocumentDB tools', () => {
         }
     });
 
+    it('exposes destructive-operation confirmation fields in tool input schemas', async () => {
+        const { tools } = await setupRegisteredTools();
+
+        expect(tools.drop_database.config.inputSchema).toHaveProperty('confirm_db_name');
+        expect(tools.drop_collection.config.inputSchema).toHaveProperty('confirm_collection_name');
+        expect(tools.drop_index.config.inputSchema).toHaveProperty('confirm_index_name');
+        // rename_collection is intentionally NOT confirmation-gated (reversible operation).
+        expect(tools.rename_collection.config.inputSchema).not.toHaveProperty('confirm_collection_name');
+    });
+
     it('list_databases lists databases', async () => {
         const { tools } = await setupRegisteredTools();
 
@@ -164,11 +174,42 @@ describe('registered DocumentDB tools', () => {
         const { tools, database } = await setupRegisteredTools();
 
         const response = parseToolResult(
-            await tools.drop_database.handler({ connection_profile: 'dev', db_name: 'fleet' }),
+            await tools.drop_database.handler({
+                connection_profile: 'dev',
+                db_name: 'fleet',
+                confirm_db_name: 'fleet',
+            }),
         );
 
         expect(database.dropDatabase).toHaveBeenCalled();
         expect(response.success).toBe(true);
+    });
+
+    it('drop_database rejects when confirm_db_name does not match', async () => {
+        const { tools, database } = await setupRegisteredTools();
+
+        const result = await tools.drop_database.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            confirm_db_name: 'wrong',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('does not match the target resource');
+        expect(database.dropDatabase).not.toHaveBeenCalled();
+    });
+
+    it('drop_database rejects when confirm_db_name is missing', async () => {
+        const { tools, database } = await setupRegisteredTools();
+
+        const result = await tools.drop_database.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('confirm_db_name is required');
+        expect(database.dropDatabase).not.toHaveBeenCalled();
     });
 
     it('drop_collection drops a collection', async () => {
@@ -179,11 +220,27 @@ describe('registered DocumentDB tools', () => {
                 connection_profile: 'dev',
                 db_name: 'fleet',
                 collection_name: 'vehicles',
+                confirm_collection_name: 'vehicles',
             }),
         );
 
         expect(database.dropCollection).toHaveBeenCalledWith('vehicles');
         expect(response.message).toBe('Collection dropped successfully');
+    });
+
+    it('drop_collection rejects when confirm_collection_name does not match', async () => {
+        const { tools, database } = await setupRegisteredTools();
+
+        const result = await tools.drop_collection.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            confirm_collection_name: 'Vehicles',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('does not match the target resource');
+        expect(database.dropCollection).not.toHaveBeenCalled();
     });
 
     it('rename_collection renames a collection', async () => {
@@ -281,11 +338,28 @@ describe('registered DocumentDB tools', () => {
                 db_name: 'fleet',
                 collection_name: 'vehicles',
                 index_name: 'idx_status',
+                confirm_index_name: 'idx_status',
             }),
         );
 
         expect(collection.dropIndex).toHaveBeenCalledWith('idx_status');
         expect(response.success).toBe(true);
+    });
+
+    it('drop_index rejects when confirm_index_name does not match', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const result = await tools.drop_index.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            index_name: 'idx_status',
+            confirm_index_name: 'idx_other',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('does not match the target resource');
+        expect(collection.dropIndex).not.toHaveBeenCalled();
     });
 
     it('find_documents finds documents', async () => {

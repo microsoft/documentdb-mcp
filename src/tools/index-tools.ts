@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
 import { parseParams } from './utils/paramParser';
 import { connectionProfileSchema } from './utils/toolSecurity';
@@ -71,17 +72,22 @@ export function registerIndexTools(server: McpServer): void {
         'drop_index',
         {
             title: 'Drop Index',
-            description: 'Drop an index from a collection',
+            description:
+                'Drop an index from a collection. Requires confirm_index_name to exactly equal index_name.',
             inputSchema: {
                 connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection'),
                 index_name: z.string().describe('Name of the index to drop'),
+                confirm_index_name: z
+                    .string()
+                    .describe('Must exactly equal index_name. Confirms the destructive drop_index operation.'),
             },
         },
         withDbGuard(
             { toolName: 'drop_index', requiredRole: 'management' },
-            async ({ db_name, collection_name, index_name }, client) => {
+            async ({ db_name, collection_name, index_name, confirm_index_name }, client) => {
+                assertDestructiveConfirmation('confirm_index_name', index_name, confirm_index_name);
                 const result = await client.db(db_name).collection(collection_name).dropIndex(index_name);
                 const response = { success: true, message: `Index '${index_name}' dropped successfully`, data: result };
                 return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
