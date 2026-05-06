@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
 import { connectionProfileSchema } from './utils/toolSecurity';
 
@@ -69,20 +70,28 @@ export function registerDatabaseTools(server: McpServer): void {
         'drop_database',
         {
             title: 'Drop Database',
-            description: 'Drop a database and all its collections',
+            description:
+                'Drop a database and all its collections. Requires confirm_db_name to exactly equal db_name.',
             inputSchema: {
                 connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database to drop'),
+                confirm_db_name: z
+                    .string()
+                    .describe('Must exactly equal db_name. Confirms the destructive drop_database operation.'),
             },
         },
-        withDbGuard({ toolName: 'drop_database', requiredRole: 'management' }, async ({ db_name }, client) => {
-            const result = await client.db(db_name).dropDatabase();
+        withDbGuard(
+            { toolName: 'drop_database', requiredRole: 'management' },
+            async ({ db_name, confirm_db_name }, client) => {
+                assertDestructiveConfirmation('confirm_db_name', db_name, confirm_db_name);
+                const result = await client.db(db_name).dropDatabase();
             const response = {
                 success: true,
                 message: `Database '${db_name}' dropped successfully`,
                 data: result,
             };
-            return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
-        }),
+                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+            },
+        ),
     );
 }

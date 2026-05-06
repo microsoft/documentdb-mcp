@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
 import { parseParams } from './utils/paramParser';
 import { connectionProfileSchema } from './utils/toolSecurity';
@@ -14,16 +15,23 @@ export function registerCollectionTools(server: McpServer): void {
         'drop_collection',
         {
             title: 'Drop Collection',
-            description: 'Drop a collection from a database',
+            description:
+                'Drop a collection from a database. Requires confirm_collection_name to exactly equal collection_name.',
             inputSchema: {
                 connection_profile: connectionProfileSchema,
                 db_name: z.string().describe('Name of the database'),
                 collection_name: z.string().describe('Name of the collection to drop'),
+                confirm_collection_name: z
+                    .string()
+                    .describe(
+                        'Must exactly equal collection_name. Confirms the destructive drop_collection operation.',
+                    ),
             },
         },
         withDbGuard(
             { toolName: 'drop_collection', requiredRole: 'management' },
-            async ({ db_name, collection_name }, client) => {
+            async ({ db_name, collection_name, confirm_collection_name }, client) => {
+                assertDestructiveConfirmation('confirm_collection_name', collection_name, confirm_collection_name);
                 await client.db(db_name).dropCollection(collection_name);
                 return {
                     content: [
