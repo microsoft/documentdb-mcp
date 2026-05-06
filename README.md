@@ -1,5 +1,7 @@
 # DocumentDB MCP Server
 
+> **Public preview.** This server is in public preview. Interfaces, configuration, and tool behavior may change without notice. Do not use it in production without your own review.
+
 DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure Cosmos DB for MongoDB vCore and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
 
 Every tool call uses a configured `connection_profile`. Tools do not accept runtime database connection strings, and production deployments can use Microsoft Entra ID / OIDC backend authentication so the server does not need a database password.
@@ -315,6 +317,12 @@ The server enforces these controls before opening a database connection:
 - Default rejection of aggregation `$out` and `$merge` stages.
 
 Allowed and denied tool invocations are written to stderr with the `[MCP-AUDIT]` prefix. Audit records include the tool name, required role, decision, connection profile, transport, session or request IDs, and caller identity metadata when available.
+
+### Data masking is not supported
+
+The server does **not** mask, redact, or anonymize document fields. Tool results are returned to the MCP client verbatim, which means they typically flow into an LLM and any of its downstream logging, telemetry, or memory. Treat every database the server can reach as fully readable by anyone authorized to call its read tools.
+
+If you need to expose a database that contains PII, PHI, payment data, secrets, or other sensitive fields, configure masking at the database layer (for example, a masked MongoDB view built with `$project` / `$set` / `$substr` / `$concat` / `$hash`) and point the connection profile's identity at the masked view rather than the underlying collection. Per-profile masking support in the server is tracked as a future enhancement.
 
 ## Development
 
