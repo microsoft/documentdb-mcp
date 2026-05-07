@@ -100,7 +100,7 @@ function createFakeClient() {
     return { client, collection, database, defaultDatabase };
 }
 
-async function setupRegisteredTools() {
+async function setupRegisteredTools(extraEnv: Record<string, string> = {}) {
     vi.resetModules();
     process.env = {
         ...originalEnv,
@@ -110,6 +110,7 @@ async function setupRegisteredTools() {
         ENABLE_WRITE_TOOLS: 'true',
         ENABLE_MANAGEMENT_TOOLS: 'true',
         ALLOW_AGGREGATE_WRITE_STAGES: 'false',
+        ...extraEnv,
     };
 
     const fakeMongo = createFakeClient();
@@ -271,7 +272,7 @@ describe('registered DocumentDB tools', () => {
             }),
         );
 
-        expect(collection.aggregate).toHaveBeenCalledWith([{ $sample: { size: 5 } }]);
+        expect(collection.aggregate).toHaveBeenCalledWith([{ $sample: { size: 5 } }], { maxTimeMS: 30000 });
         expect(response).toEqual([{ _id: 'sample1' }]);
     });
 
@@ -375,7 +376,10 @@ describe('registered DocumentDB tools', () => {
             }),
         );
 
-        expect(collection.find).toHaveBeenCalledWith({ status: 'active' }, { limit: 2, skip: 1 });
+        expect(collection.find).toHaveBeenCalledWith(
+            { status: 'active' },
+            { limit: 2, skip: 1, maxTimeMS: 30000 },
+        );
         expect(response.returned_count).toBe(1);
         expect(response.total_count).toBe(3);
     });
@@ -392,7 +396,7 @@ describe('registered DocumentDB tools', () => {
             }),
         );
 
-        expect(collection.countDocuments).toHaveBeenCalledWith({ status: 'active' });
+        expect(collection.countDocuments).toHaveBeenCalledWith({ status: 'active' }, { maxTimeMS: 30000 });
         expect(response.count).toBe(3);
     });
 
@@ -463,7 +467,10 @@ describe('registered DocumentDB tools', () => {
             }),
         );
 
-        expect(collection.aggregate).toHaveBeenCalledWith([{ $match: { status: 'active' } }], { allowDiskUse: true });
+        expect(collection.aggregate).toHaveBeenCalledWith(
+            [{ $match: { status: 'active' } }],
+            { allowDiskUse: true, maxTimeMS: 30000 },
+        );
         expect(response.total_count).toBe(1);
     });
 
@@ -507,5 +514,148 @@ describe('registered DocumentDB tools', () => {
             verbosity: 'executionStats',
         });
         expect(response.explain.ok).toBe(1);
+    });
+});
+
+describe('registered DocumentDB tools — data volume & payload limits', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    it('find_documents clamps options.limit to MAX_FIND_LIMIT', async () => {
+        const { tools, collection } = await setupRegisteredTools({ MAX_FIND_LIMIT: '25' });
+
+        const response = parseToolResult(
+            await tools.find_documents.handler({
+                connection_profile: 'dev',
+                db_name: 'fleet',
+                collection_name: 'vehicles',
+                query: {},
+                options: { limit: 50000 },
+            }),
+        );
+
+        expect(collection.find).toHaveBeenCalledWith(
+            {},
+            expect.objectContaining({ limit: 25, skip: 0, maxTimeMS: 30000 }),
+        );
+        expect(response.applied_options.limit).toBe(25);
+    });
+
+    it('find_documents defaults to MAX_FIND_LIMIT when options.limit omitted', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(collection.find).toHaveBeenCalledWith(
+            {},
+            expect.objectContaining({ limit: 100, maxTimeMS: 30000 }),
+        );
+    });
+
+    it('sample_documents clamps sample_size to MAX_SAMPLE_SIZE', async () => {
+        const { tools, collection } = await setupRegisteredTools({ MAX_SAMPLE_SIZE: '20' });
+
+        await tools.sample_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            sample_size: 99999,
+        });
+
+        expect(collection.aggregate).toHaveBeenCalledWith(
+            [{ $sample: { size: 20 } }],
+            { maxTimeMS: 30000 },
+        );
+    });
+
+    it('insert_documents rejects array exceeding MAX_INSERT_BATCH_SIZE without calling insertMany', async () => {
+        const { tools, collection } = await setupRegisteredTools({ MAX_INSERT_BATCH_SIZE: '5' });
+
+        const docs = Array.from({ length: 6 }, (_, i) => ({ vin: String(i) }));
+        const result = await tools.insert_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            documents: docs,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/exceeds the maximum batch size/i);
+        expect(collection.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('insert_documents accepts batch at exactly MAX_INSERT_BATCH_SIZE', async () => {
+        const { tools, collection } = await setupRegisteredTools({ MAX_INSERT_BATCH_SIZE: '3' });
+
+        const docs = Array.from({ length: 3 }, (_, i) => ({ vin: String(i) }));
+        const response = await tools.insert_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            documents: docs,
+        });
+
+        expect(response.isError).toBeUndefined();
+        expect(collection.insertMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('aggregate, count_documents, and find_and_modify all carry maxTimeMS', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        await tools.count_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+        await tools.aggregate.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            pipeline: [{ $match: {} }],
+        });
+        await tools.find_and_modify.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: { vin: '1' },
+            update: { $set: { status: 'x' } },
+        });
+
+        expect(collection.countDocuments).toHaveBeenCalledWith({}, { maxTimeMS: 30000 });
+        expect(collection.aggregate).toHaveBeenCalledWith(
+            [{ $match: {} }],
+            expect.objectContaining({ maxTimeMS: 30000 }),
+        );
+        expect(collection.findOneAndUpdate).toHaveBeenCalledWith(
+            { vin: '1' },
+            { $set: { status: 'x' } },
+            expect.objectContaining({ maxTimeMS: 30000 }),
+        );
+    });
+
+    it('find_documents rejects when serialized payload exceeds MAX_RETURN_BYTES', async () => {
+        const { tools } = await setupRegisteredTools({ MAX_RETURN_BYTES: '256' });
+
+        // Stub the find/count to return a huge document via the existing client mock —
+        // we need a fresh setup where the find returns large data. Use a re-mocked toArray.
+        const result = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: { huge: 'x'.repeat(2000) },
+        });
+
+        // The query alone (echoed in applied_options) exceeds 256 bytes, so the cap fires.
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/exceeds maximum/i);
     });
 });

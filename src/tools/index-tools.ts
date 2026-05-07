@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
+import { serializeResponse } from './utils/limits';
 import { parseParams } from './utils/paramParser';
 import { connectionProfileSchema } from './utils/toolSecurity';
 
@@ -41,7 +42,7 @@ export function registerIndexTools(server: McpServer): void {
                     .collection(collection_name)
                     .createIndex(parsed.keys as any, parsed.options as any);
                 const response = { index_name: indexName, keys: parsed.keys, options: parsed.options };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );
@@ -61,9 +62,7 @@ export function registerIndexTools(server: McpServer): void {
             { toolName: 'list_indexes', requiredRole: 'read' },
             async ({ db_name, collection_name }, client) => {
                 const indexes = await client.db(db_name).collection(collection_name).listIndexes().toArray();
-                return {
-                    content: [{ type: 'text', text: JSON.stringify({ indexes, count: indexes.length }, null, 2) }],
-                };
+                return serializeResponse({ indexes, count: indexes.length });
             },
         ),
     );
@@ -90,7 +89,7 @@ export function registerIndexTools(server: McpServer): void {
                 assertDestructiveConfirmation('confirm_index_name', index_name, confirm_index_name);
                 const result = await client.db(db_name).collection(collection_name).dropIndex(index_name);
                 const response = { success: true, message: `Index '${index_name}' dropped successfully`, data: result };
-                return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+                return serializeResponse(response);
             },
         ),
     );

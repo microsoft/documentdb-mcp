@@ -22,21 +22,33 @@ Tests: [test/tools/confirmations.test.ts](../test/tools/confirmations.test.ts) (
 
 Multi-document writes (`delete_documents` / `update_documents` with `multi=true` and broad filters) are tracked separately in section 5 below.
 
-### 2. Data Volume And Payload Limits
+### 2. Data Volume And Payload Limits — DONE
 
-Add configurable limits so one accidental request cannot overload the server or backend database.
+Configurable, fail-closed limits prevent a single accidental request from overloading the server, the backend, or the calling LLM context window.
 
-Suggested settings:
+Configurable env vars (defaults shown), all enforced at startup against Azure DocumentDB hard caps:
 
-```env
-MAX_FIND_LIMIT=100
-MAX_SAMPLE_SIZE=50
-MAX_INSERT_BATCH_SIZE=100
-MAX_RETURN_BYTES=1048576
-MONGODB_MAX_TIME_MS=30000
-```
+| Env var | Default | Hard cap | Enforcement point |
+|---|---|---|---|
+| `MAX_FIND_LIMIT` | `100` | `10000` | `find_documents.options.limit`, `explain_operation` (find branch) |
+| `MAX_SAMPLE_SIZE` | `50` | `10000` | `sample_documents.sample_size` |
+| `MAX_INSERT_BATCH_SIZE` | `100` | `25000` | `insert_documents` (array branch) |
+| `MAX_RETURN_BYTES` | `1048576` (1 MiB) | `50331648` (48 MiB) | every tool response (`serializeResponse`) |
+| `MONGODB_MAX_TIME_MS` | `30000` | `600000` (10 min) | `find`, `countDocuments`, `aggregate`, `findOneAndUpdate`, `$indexStats`, `$sample` |
 
-Apply limits to document reads, aggregation results, sampling, inserts, and returned response payloads.
+Hard caps are sourced from the [Azure DocumentDB limitations doc](https://docs.azure.cn/en-us/documentdb/limitations) and enforced in [src/config.ts](../src/config.ts) (`BACKEND_HARD_LIMITS`). Misconfigured values fail fast at startup with an actionable message.
+
+Implementation:
+- [src/tools/utils/limits.ts](../src/tools/utils/limits.ts) — `clampPositiveInt`, `assertBatchSizeWithinLimit`, `serializeResponse`, `maxTimeMSOption`
+- [src/config.ts](../src/config.ts) — `config.limits` section + `parseBoundedPositiveInt`
+- Wired into all four tool files: [document-tools.ts](../src/tools/document-tools.ts), [collection-tools.ts](../src/tools/collection-tools.ts), [database-tools.ts](../src/tools/database-tools.ts), [index-tools.ts](../src/tools/index-tools.ts)
+
+Tests:
+- [test/config.test.ts](../test/config.test.ts) — defaults + 5 hard-cap rejections + bad-value rejections (9 tests)
+- [test/tools/limits.test.ts](../test/tools/limits.test.ts) — helper-level positive/negative coverage (17 tests)
+- [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — wiring tests proving each tool actually clamps / rejects / carries `maxTimeMS` (7 new tests)
+
+Manual verification steps are in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
 ### 3. Per-Profile Database And Collection Restrictions
 

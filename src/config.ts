@@ -47,6 +47,13 @@ export interface MCPConfig {
         managementTools: boolean;
         allowWriteStagesInAggregate: boolean;
     };
+    limits: {
+        maxFindLimit: number;
+        maxSampleSize: number;
+        maxInsertBatchSize: number;
+        maxReturnBytes: number;
+        mongoMaxTimeMs: number;
+    };
     connectionProfiles: Record<string, ConnectionProfileConfig>;
     allowUnauthenticatedStdio: boolean;
 }
@@ -62,6 +69,50 @@ function parseList(value: string | undefined): string[] {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+}
+
+function parsePositiveInt(value: string | undefined, defaultValue: number, name: string): number {
+    if (value === undefined || value === '') return defaultValue;
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error(`${name} must be a positive integer (got '${value}').`);
+    }
+    return parsed;
+}
+
+/**
+ * Hard ceilings imposed by the Azure DocumentDB / Cosmos DB for MongoDB vCore backend.
+ * Source: https://learn.microsoft.com/en-us/azure/cosmos-db/mongodb/vcore/limits
+ * (mirror: https://docs.azure.cn/en-us/documentdb/limitations, last verified Feb 2026).
+ *
+ * The MCP server refuses to start with values above these ceilings so admins discover
+ * misconfiguration immediately rather than via opaque driver errors at request time.
+ *
+ * Values chosen below match documented backend behavior:
+ *   - MAX_INSERT_BATCH_SIZE: 25,000 — "Maximum writes per batch operation: 25,000 writes."
+ *   - MAX_RETURN_BYTES:      48 MB — MongoDB wire-protocol message ceiling (3 * 16 MB doc cap).
+ *   - MAX_FIND_LIMIT / MAX_SAMPLE_SIZE: conservative caller-facing caps (memory-safe;
+ *     real ceiling is the response-byte cap and per-tier query memory limit, e.g. ~150 MiB on M80).
+ *   - MONGODB_MAX_TIME_MS: 600,000 (10 min) — well above the 120s default but below cursor lifetime.
+ */
+const BACKEND_HARD_LIMITS: Readonly<Record<string, number>> = {
+    MAX_FIND_LIMIT: 10_000,
+    MAX_SAMPLE_SIZE: 10_000,
+    MAX_INSERT_BATCH_SIZE: 25_000,
+    MAX_RETURN_BYTES: 48 * 1024 * 1024,
+    MONGODB_MAX_TIME_MS: 600_000,
+};
+
+function parseBoundedPositiveInt(value: string | undefined, defaultValue: number, name: string): number {
+    const parsed = parsePositiveInt(value, defaultValue, name);
+    const ceiling = BACKEND_HARD_LIMITS[name];
+    if (ceiling !== undefined && parsed > ceiling) {
+        throw new Error(
+            `${name}=${parsed} exceeds the Azure DocumentDB hard limit of ${ceiling}. ` +
+                `Lower the value in your environment.`,
+        );
+    }
+    return parsed;
 }
 
 function parseConnectionProfiles(
@@ -107,6 +158,17 @@ export const config: MCPConfig = {
         writeTools: parseBoolean(process.env.ENABLE_WRITE_TOOLS, false),
         managementTools: parseBoolean(process.env.ENABLE_MANAGEMENT_TOOLS, false),
         allowWriteStagesInAggregate: parseBoolean(process.env.ALLOW_AGGREGATE_WRITE_STAGES, false),
+    },
+    limits: {
+        maxFindLimit: parseBoundedPositiveInt(process.env.MAX_FIND_LIMIT, 100, 'MAX_FIND_LIMIT'),
+        maxSampleSize: parseBoundedPositiveInt(process.env.MAX_SAMPLE_SIZE, 50, 'MAX_SAMPLE_SIZE'),
+        maxInsertBatchSize: parseBoundedPositiveInt(
+            process.env.MAX_INSERT_BATCH_SIZE,
+            100,
+            'MAX_INSERT_BATCH_SIZE',
+        ),
+        maxReturnBytes: parseBoundedPositiveInt(process.env.MAX_RETURN_BYTES, 1_048_576, 'MAX_RETURN_BYTES'),
+        mongoMaxTimeMs: parseBoundedPositiveInt(process.env.MONGODB_MAX_TIME_MS, 30_000, 'MONGODB_MAX_TIME_MS'),
     },
     connectionProfiles: parseConnectionProfiles(process.env.CONNECTION_PROFILES, process.env.CONNECTION_PROFILES_FILE),
     allowUnauthenticatedStdio: parseBoolean(process.env.ALLOW_UNAUTHENTICATED_STDIO, false),
