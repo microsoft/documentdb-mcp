@@ -77,6 +77,25 @@ Hot reload is *not* required for the current release; documenting the restart-to
 
 **Closes when.** Rate limiter is keyed by request context principal in addition to category.
 
+## Gap 7: Aggregation pipelines bypass the per-profile resource allowlist
+
+**What's missing.** Section 3's allowlist is enforced against the top-level `db_name` / `collection_name` tool inputs in `withDbGuard`. It is not applied to namespace references *inside* an aggregation pipeline. A caller scoped to `fleet.vehicles` can still reach other collections via `$lookup.from`, `$lookup.pipeline` (recursive), `$unionWith`, `$graphLookup.from`, or `$facet` sub-pipelines. With `ALLOW_AGGREGATE_WRITE_STAGES=true` the same gap applies to `$merge.into` / `$out` writes.
+
+**Why it matters.** The whole point of the allowlist is that a profile cannot reach data outside its declared scope. `$lookup` to a sibling collection in the same database silently returns that data joined into the response.
+
+**Why the existing layers don't fully cover it.**
+- `assertResourceAllowed` only sees the tool-input namespace, not pipeline-internal namespaces.
+- `assertAggregatePipelineIsReadOnly` ([src/tools/document-tools.ts](../src/tools/document-tools.ts)) blocks `$out` and `$merge` by default, which closes the cross-namespace **write** path with default settings — but does nothing for read-side cross-namespace stages.
+- Section 4a's "allowed aggregation stages" bullet would close the gap only by banning `$lookup` / `$unionWith` / `$graphLookup` outright, which is too blunt for most workloads.
+
+**Closes when.** A recursive pipeline-namespace walker is added (tracked in readiness checklist section 4a as "Pipeline namespace enforcement"). It should:
+- Walk every pipeline submitted to `aggregate` and `explain_operation` (with `operation=aggregate`).
+- Extract every namespace referenced via `$lookup.from`, `$lookup.pipeline` (recurse), `$unionWith` (string and `{ db, coll, pipeline }` forms; recurse into `pipeline`), `$graphLookup.from`, `$merge.into`, `$out`, and `$facet` sub-pipelines (recurse).
+- Run each extracted `(db, coll)` through `assertResourceAllowed` against the resolved profile, defaulting `db` to the tool-input `db_name` when the stage omits it.
+- Fail closed with the same audit-logged deny path used by the top-level check.
+
+Until that lands, customers needing strict pipeline-level scoping should disable the `aggregate` tool on restricted profiles or rely on backend-side RBAC at the DocumentDB account.
+
 ## Recommended sequencing
 
 For the v1 release readiness pass:
@@ -84,5 +103,6 @@ For the v1 release readiness pass:
 1. **Required.** Add **Caller-To-Profile Binding** (Gap 1) as a new section 4b in the readiness checklist. This is the only gap above that materially changes the security posture and is small to implement.
 2. **Required.** Document **stdio trust model** (Gap 2) in the production guide (section 8). No code change.
 3. **Required.** Document **restart-to-rotate** expectation (Gap 3) in the production guide. No code change.
-4. **Should-have soon after.** Section 4a fine-grained controls (Gap 5).
-5. **Nice-to-have.** Hot reload, split secret/config sources, per-caller rate limiting (Gaps 3, 4, 6).
+4. **Required.** Land **Pipeline namespace enforcement** (Gap 7) — self-contained walker plus wiring for `aggregate` and `explain_operation`. Without it, the section 3 allowlist over-promises.
+5. **Should-have soon after.** Section 4a fine-grained controls (Gap 5).
+6. **Nice-to-have.** Hot reload, split secret/config sources, per-caller rate limiting (Gaps 3, 4, 6).

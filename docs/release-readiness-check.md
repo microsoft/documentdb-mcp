@@ -85,6 +85,12 @@ Enforcement:
 - `list_databases` is filtered server-side: a profile with `allowedDatabases` only sees those databases in the response; a profile with per-db `allowedCollections` only sees those collections when listing per-database.
 - Tools that do not take `db_name` (e.g. `current_ops`) are unaffected — those are gated by management-role capability.
 
+Known limitation — aggregation pipelines:
+
+The allowlist is applied to the top-level `db_name` / `collection_name` tool inputs. It is **not** applied to namespaces referenced *inside* an aggregation pipeline. A caller scoped to `fleet.vehicles` can still reach other collections via `$lookup.from`, `$lookup.pipeline`, `$unionWith`, `$graphLookup.from`, or `$facet` sub-pipelines, and (only when `ALLOW_AGGREGATE_WRITE_STAGES=true`) write to other namespaces via `$merge.into` / `$out`.
+
+With the default `ALLOW_AGGREGATE_WRITE_STAGES=false`, `$out` and `$merge` are already blocked by `assertAggregatePipelineIsReadOnly` ([src/tools/document-tools.ts](../src/tools/document-tools.ts)), so the cross-namespace **write** path is closed by default. The cross-namespace **read** path (`$lookup` and friends) is not. Closing it requires a recursive pipeline-namespace walker; this is tracked in section 4a below as **Pipeline namespace enforcement** and is the planned mitigation. Until that lands, customers who require strict pipeline-level scoping should also disable the `aggregate` tool on restricted profiles (or rely on backend-side RBAC at the DocumentDB account).
+
 Implementation:
 - [src/config.ts](../src/config.ts) — added `allowedDatabases` and `allowedCollections` to `ConnectionProfileConfig`
 - [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) — `assertResourceAllowed`, `getProfileScope`
@@ -137,6 +143,7 @@ Recommended fine-grained controls (composable, per profile):
 - Mandatory query filter injection (for example, force `tenant_id` or `region` constraints on every query)
 - Maximum result size and document size per profile or collection
 - Allowed aggregation stages per profile, with destructive stages blocked by default
+- **Pipeline namespace enforcement** — recursively walk every submitted aggregation pipeline and apply the per-profile resource allowlist (section 3) to every namespace referenced via `$lookup.from` / `$lookup.pipeline`, `$unionWith`, `$graphLookup.from`, `$merge.into`, `$out`, and `$facet` sub-pipelines. Without this, `$lookup` and friends bypass the section 3 allowlist; this is the planned mitigation for the limitation noted in section 3.
 - Allowed update operators per profile (for example, deny `$rename` or `$unset` on prod profiles)
 - Read-only mode flag at the profile level that disables all write/management tools regardless of caller role
 
