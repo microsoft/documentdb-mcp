@@ -88,3 +88,98 @@ describe('connectionProfiles', () => {
         expect(() => resolveConnectionProfile('prod')).toThrow(/must define tokenScope or tokenResource/);
     });
 });
+
+describe('connectionProfiles — per-profile resource allowlists', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+    });
+
+    it('allows any database when allowedDatabases is omitted', async () => {
+        const { assertResourceAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'anything' })).not.toThrow();
+    });
+
+    it('allows a database listed in allowedDatabases', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet","ops"]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
+        expect(() => assertResourceAllowed('dev', { dbName: 'ops' })).not.toThrow();
+    });
+
+    it('rejects a database not listed in allowedDatabases', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(
+            /Database 'secrets' is not allowed/,
+        );
+    });
+
+    it('treats an empty allowedDatabases array as unrestricted', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":[]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'anything' })).not.toThrow();
+    });
+
+    it('allows any collection when allowedCollections[db] is omitted', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'anything' })).not.toThrow();
+    });
+
+    it('allows a collection listed in allowedCollections[db]', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+        );
+
+        expect(() =>
+            assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' }),
+        ).not.toThrow();
+    });
+
+    it('rejects a collection not listed in allowedCollections[db]', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'secrets' })).toThrow(
+            /Collection 'fleet\.secrets' is not allowed/,
+        );
+    });
+
+    it('rejects collection access when its database itself is not allowed', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'other', collectionName: 'vehicles' })).toThrow(
+            /Database 'other' is not allowed/,
+        );
+    });
+
+    it('returns scope via getProfileScope', async () => {
+        const { getProfileScope } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+        );
+
+        expect(getProfileScope('dev')).toEqual({
+            allowedDatabases: ['fleet'],
+            allowedCollections: { fleet: ['vehicles'] },
+        });
+    });
+
+    it('returns empty scope for unknown profile', async () => {
+        const { getProfileScope } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
+
+        expect(getProfileScope('missing')).toEqual({});
+    });
+});

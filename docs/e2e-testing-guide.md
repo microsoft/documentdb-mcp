@@ -270,6 +270,20 @@ Each check restarts the server with a single env var lowered so the limit fires 
 
 If any of the above does not behave as expected, the limit is not wired and must be fixed before release.
 
+## 7b. Per-Profile Database And Collection Restrictions Verification
+
+Each check sets `CONNECTION_PROFILES` to the JSON shown, restarts the server, then exercises the named tool. After each check, restore the default profile JSON before continuing.
+
+1. **Database allowlist deny.** Use `'{"dev":{"uri":"mongodb://...","allowedDatabases":["fleet"]}}'`. Call `find_documents` with `db_name="secrets"`. Expect `isError: true` with `Database 'secrets' is not allowed for connection profile 'dev'.` and confirm the backend received no query (e.g. via Mongo logs).
+2. **Database allowlist allow.** With the same profile, call `find_documents` with `db_name="fleet", collection_name="vehicles"`. Expect a normal successful response.
+3. **Collection allowlist deny.** Use `'{"dev":{"uri":"mongodb://...","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}'`. Call `find_documents` with `db_name="fleet", collection_name="maintenance"`. Expect `isError: true` with `Collection 'fleet.maintenance' is not allowed`.
+4. **`rename_collection` target check.** With the profile from step 3, call `rename_collection` with `collection_name="vehicles", new_collection_name="leaks"`. Expect deny on the new name; verify on the backend that the source collection is unchanged.
+5. **`list_databases` filtering — top level.** With the profile from step 1, call `list_databases` with no `db_name`. Expect the response `databases` array to contain only entries from the allowlist (`fleet`), and to omit any other databases the user has on the cluster.
+6. **`list_databases` filtering — per-db.** With the profile from step 3, call `list_databases` with `db_name="fleet"`. Expect `collections` to contain only `vehicles`.
+7. **Empty allowlist is unrestricted.** Use `'{"dev":{"uri":"mongodb://...","allowedDatabases":[]}}'`. Call `find_documents` against any database. Expect normal pass-through, identical to omitting the field.
+
+If any of the above does not behave as expected, the allowlist is not wired and must be fixed before release.
+
 ## 8. Cleanup
 
 Stop and remove the local backend:

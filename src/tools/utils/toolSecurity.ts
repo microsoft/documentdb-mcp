@@ -7,6 +7,9 @@ export const connectionProfileSchema = z
 
 export interface SecureToolInput {
     connection_profile: string;
+    db_name?: string;
+    collection_name?: string;
+    new_collection_name?: string;
 }
 
 export interface ToolSecurityPolicy {

@@ -60,3 +60,68 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
 
     throw new Error(`Connection profile '${profileName}' must define authMode=entra, uriEnv, or uri.`);
 }
+
+/**
+ * Resource scope advertised by a connection profile. Empty arrays / undefined fields mean "no restriction".
+ */
+export interface ProfileScope {
+    allowedDatabases?: string[];
+    allowedCollections?: Record<string, string[]>;
+}
+
+/**
+ * Return the profile's allowlist scope (or empty scope if none configured).
+ * Callers needing to filter list responses (e.g. list_databases) read this directly.
+ */
+export function getProfileScope(profileName: string): ProfileScope {
+    const profile = config.connectionProfiles[profileName];
+    if (!profile) return {};
+    return {
+        allowedDatabases: profile.allowedDatabases,
+        allowedCollections: profile.allowedCollections,
+    };
+}
+
+/**
+ * Reject tool calls that target a database or collection not listed in the profile's allowlist.
+ *
+ * Rules:
+ *   - If `allowedDatabases` is undefined or empty, all databases pass.
+ *   - If `allowedDatabases` is set, `dbName` must be present in the list (case-sensitive).
+ *   - If `allowedCollections[dbName]` is undefined, all collections in that db pass.
+ *   - If `allowedCollections[dbName]` is set, `collectionName` must be present in that list.
+ *
+ * Fails closed with an actionable error so callers get a clear message instead of a backend permission error.
+ */
+export function assertResourceAllowed(
+    profileName: string,
+    target: { dbName?: string; collectionName?: string },
+): void {
+    const profile = config.connectionProfiles[profileName];
+    if (!profile) {
+        // resolveConnectionProfile will surface the unknown-profile error; nothing to enforce here.
+        return;
+    }
+
+    const { dbName, collectionName } = target;
+    const { allowedDatabases, allowedCollections } = profile;
+
+    if (dbName && allowedDatabases && allowedDatabases.length > 0) {
+        if (!allowedDatabases.includes(dbName)) {
+            throw new Error(
+                `Database '${dbName}' is not allowed for connection profile '${profileName}'. ` +
+                    `Allowed databases: ${allowedDatabases.join(', ')}.`,
+            );
+        }
+    }
+
+    if (dbName && collectionName && allowedCollections) {
+        const perDb = allowedCollections[dbName];
+        if (perDb && perDb.length > 0 && !perDb.includes(collectionName)) {
+            throw new Error(
+                `Collection '${dbName}.${collectionName}' is not allowed for connection profile '${profileName}'. ` +
+                    `Allowed collections in '${dbName}': ${perDb.join(', ')}.`,
+            );
+        }
+    }
+}

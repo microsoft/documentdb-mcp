@@ -50,11 +50,18 @@ Tests:
 
 Manual verification steps are in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
-### 3. Per-Profile Database And Collection Restrictions
+### 3. Per-Profile Database And Collection Restrictions — DONE
 
-Connection profiles should optionally restrict which databases and collections callers can access.
+Connection profiles can optionally restrict which databases and collections a caller may target through that profile. Profiles without these fields keep prior behavior (unrestricted).
 
-Example profile shape:
+Profile fields:
+
+| Field | Type | Behavior |
+|---|---|---|
+| `allowedDatabases` | `string[]` | If set and non-empty, only listed databases may be targeted. Omitted or `[]` = no restriction. |
+| `allowedCollections` | `Record<db, string[]>` | Per-database collection allowlist. If `allowedCollections[db]` is omitted, all collections in that db are allowed (subject to `allowedDatabases`). If set, only listed collections are allowed. |
+
+Example profile:
 
 ```json
 {
@@ -71,7 +78,24 @@ Example profile shape:
 }
 ```
 
-This prevents a valid profile from being used against unintended databases or collections.
+Enforcement:
+
+- Every tool call passing `db_name` and/or `collection_name` is checked by `withDbGuard` against the profile's allowlist before contacting the backend. Violations return `isError: true` with an actionable message naming the resource and the allowed list.
+- `rename_collection` is checked twice: the source `collection_name` and the `new_collection_name` must both be allowed.
+- `list_databases` is filtered server-side: a profile with `allowedDatabases` only sees those databases in the response; a profile with per-db `allowedCollections` only sees those collections when listing per-database.
+- Tools that do not take `db_name` (e.g. `current_ops`) are unaffected — those are gated by management-role capability.
+
+Implementation:
+- [src/config.ts](../src/config.ts) — added `allowedDatabases` and `allowedCollections` to `ConnectionProfileConfig`
+- [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) — `assertResourceAllowed`, `getProfileScope`
+- [src/tools/utils/dbGuard.ts](../src/tools/utils/dbGuard.ts) — calls `assertResourceAllowed` for both source and rename-target before invoking the handler; deny path is audit-logged
+- [src/tools/database-tools.ts](../src/tools/database-tools.ts) — `list_databases` filters its response by `getProfileScope`
+
+Tests:
+- [test/security/connectionProfiles.test.ts](../test/security/connectionProfiles.test.ts) — 9 new helper-level tests covering allow/deny matrix for db and collection allowlists, empty-array semantics, and `getProfileScope`
+- [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — 8 new wiring tests proving each enforcement point: db-out-of-scope deny, collection-out-of-scope deny, allowed pass-through, `rename_collection` target check, `list_databases` filtering (both branches), and unchanged behavior when no allowlist is configured
+
+Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
 ### 4. Per-Profile Role And Capability Restrictions
 

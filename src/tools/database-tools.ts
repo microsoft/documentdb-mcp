@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { getProfileScope } from '../security/connectionProfiles';
 import { assertDestructiveConfirmation } from './utils/confirmations';
 import { withDbGuard } from './utils/dbGuard';
 import { serializeResponse } from './utils/limits';
@@ -27,15 +28,26 @@ export function registerDatabaseTools(server: McpServer): void {
                     ),
             },
         },
-        withDbGuard({ toolName: 'list_databases', requiredRole: 'read' }, async ({ db_name }, client) => {
+        withDbGuard({ toolName: 'list_databases', requiredRole: 'read' }, async ({ connection_profile, db_name }, client) => {
+            const scope = getProfileScope(connection_profile);
+            const allowedDbs = scope.allowedDatabases;
+            const dbAllowed = (name: string) =>
+                !allowedDbs || allowedDbs.length === 0 || allowedDbs.includes(name);
+            const collectionAllowed = (db: string, collectionName: string) => {
+                const perDb = scope.allowedCollections?.[db];
+                return !perDb || perDb.length === 0 || perDb.includes(collectionName);
+            };
+
             if (!db_name) {
                 const databaseInfos = await client.db().admin().listDatabases();
                 const response = {
-                    databases: databaseInfos.databases.map((db) => ({
-                        name: db.name,
-                        sizeOnDisk: db.sizeOnDisk,
-                        empty: db.empty,
-                    })),
+                    databases: databaseInfos.databases
+                        .filter((db) => dbAllowed(db.name))
+                        .map((db) => ({
+                            name: db.name,
+                            sizeOnDisk: db.sizeOnDisk,
+                            empty: db.empty,
+                        })),
                 };
                 return serializeResponse(response);
             }
@@ -43,18 +55,20 @@ export function registerDatabaseTools(server: McpServer): void {
             const db = client.db(db_name);
             const collections = await db.listCollections().toArray();
             const collectionInfos = await Promise.all(
-                collections.map(async (collection) => {
-                    try {
-                        const count = await db.collection(collection.name).estimatedDocumentCount();
-                        return { name: collection.name, count };
-                    } catch (error) {
-                        return {
-                            name: collection.name,
-                            count: 0,
-                            error: error instanceof Error ? error.message : String(error),
-                        };
-                    }
-                }),
+                collections
+                    .filter((collection) => collectionAllowed(db_name, collection.name))
+                    .map(async (collection) => {
+                        try {
+                            const count = await db.collection(collection.name).estimatedDocumentCount();
+                            return { name: collection.name, count };
+                        } catch (error) {
+                            return {
+                                name: collection.name,
+                                count: 0,
+                                error: error instanceof Error ? error.message : String(error),
+                            };
+                        }
+                    }),
             );
             return serializeResponse({ database_name: db_name, collections: collectionInfos });
         }),

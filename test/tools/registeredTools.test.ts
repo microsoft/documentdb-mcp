@@ -659,3 +659,122 @@ describe('registered DocumentDB tools — data volume & payload limits', () => {
         expect(result.content[0].text).toMatch(/exceeds maximum/i);
     });
 });
+
+describe('registered DocumentDB tools — per-profile resource allowlists', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    const allowlistedProfile =
+        '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+
+    it('rejects a tool call targeting a database outside allowedDatabases', async () => {
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlistedProfile });
+
+        const result = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'secrets',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Database 'secrets' is not allowed/);
+        expect(collection.find).not.toHaveBeenCalled();
+    });
+
+    it('rejects a tool call targeting a collection outside allowedCollections', async () => {
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlistedProfile });
+
+        const result = await tools.count_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'maintenance',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Collection 'fleet\.maintenance' is not allowed/);
+        expect(collection.countDocuments).not.toHaveBeenCalled();
+    });
+
+    it('allows a tool call when both database and collection are allowed', async () => {
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlistedProfile });
+
+        const response = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(response.isError).toBeUndefined();
+        expect(collection.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects rename_collection when the new collection name is not allowed', async () => {
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlistedProfile });
+
+        const result = await tools.rename_collection.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            new_collection_name: 'secrets',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Collection 'fleet\.secrets' is not allowed/);
+        expect(collection.rename).not.toHaveBeenCalled();
+    });
+
+    it('list_databases filters out non-allowed databases when no db_name is given', async () => {
+        const allowlist =
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}';
+        const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlist });
+
+        const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
+
+        // The fake admin().listDatabases() returns only 'fleet', and 'fleet' IS allowed, so it remains.
+        expect(response.databases).toEqual([{ name: 'fleet', sizeOnDisk: 100, empty: false }]);
+    });
+
+    it('list_databases hides a database that is not in allowedDatabases', async () => {
+        // Allow only a non-existent db so the fake's 'fleet' entry is filtered out.
+        const allowlist =
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["other"]}}';
+        const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlist });
+
+        const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
+
+        expect(response.databases).toEqual([]);
+    });
+
+    it('list_databases (per-db branch) filters collections outside allowedCollections', async () => {
+        // Allow the 'fleet' db but only the 'maintenance' collection — fake returns only 'vehicles' so result is empty.
+        const allowlist =
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["maintenance"]}}}';
+        const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlist });
+
+        const response = parseToolResult(
+            await tools.list_databases.handler({ connection_profile: 'dev', db_name: 'fleet' }),
+        );
+
+        expect(response.collections).toEqual([]);
+    });
+
+    it('passes through unchanged when no allowlist is configured', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const response = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'whatever',
+            collection_name: 'anything',
+            query: {},
+        });
+
+        expect(response.isError).toBeUndefined();
+        expect(collection.find).toHaveBeenCalledTimes(1);
+    });
+});
