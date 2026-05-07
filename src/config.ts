@@ -20,6 +20,18 @@ export interface ConnectionProfileConfig {
     retryWrites?: boolean;
     appName?: string;
     allowedHosts?: string[];
+    /**
+     * Optional allowlist of databases this profile may access.
+     * If omitted/empty, all databases are allowed (backward compatible).
+     * If set, any tool call whose `db_name` is not in this list is rejected before contacting the backend.
+     */
+    allowedDatabases?: string[];
+    /**
+     * Optional per-database collection allowlist.
+     * If `allowedCollections[db]` is omitted, all collections in that db are allowed (subject to `allowedDatabases`).
+     * If `allowedCollections[db]` is set, only listed collections are allowed.
+     */
+    allowedCollections?: Record<string, string[]>;
 }
 
 export interface MCPConfig {
