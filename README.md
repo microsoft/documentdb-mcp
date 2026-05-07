@@ -5,7 +5,7 @@
 
 > **Public preview.** This server is in public preview. Interfaces, configuration, and tool behavior may change without notice. Do not use it in production without your own review.
 
-DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure Cosmos DB for MongoDB vCore and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
+DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure DocumentDB and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
 
 Every tool call uses a configured `connection_profile`. Tools do not accept runtime database connection strings, and production deployments can use Microsoft Entra ID / OIDC backend authentication so the server does not need a database password.
 
