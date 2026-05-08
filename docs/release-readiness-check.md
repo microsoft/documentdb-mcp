@@ -54,12 +54,18 @@ Manual verification steps are in [docs/e2e-testing-guide.md](./e2e-testing-guide
 
 Connection profiles can optionally restrict which databases and collections a caller may target through that profile. Profiles without these fields keep prior behavior (unrestricted).
 
+All three profile allowlists (`allowedRoles`, `allowedDatabases`, `allowedCollections[db]`) follow the same field semantics:
+
+- **omitted (`undefined`)** → documented default (unrestricted for resources; `["read"]` for roles)
+- **listed (`[...]`)** → narrow to exactly the listed entries
+- **empty (`[]`)** → explicit deny-all (lock-to-nothing)
+
 Profile fields:
 
 | Field | Type | Behavior |
 |---|---|---|
-| `allowedDatabases` | `string[]` | If set and non-empty, only listed databases may be targeted. Omitted or `[]` = no restriction. |
-| `allowedCollections` | `Record<db, string[]>` | Per-database collection allowlist. If `allowedCollections[db]` is omitted, all collections in that db are allowed (subject to `allowedDatabases`). If set, only listed collections are allowed. |
+| `allowedDatabases` | `string[]` | Listed = only those databases; omitted = all databases; `[]` = explicit deny-all. |
+| `allowedCollections` | `Record<db, string[]>` | Per-database collection allowlist. `allowedCollections[db]` listed = only those; omitted = all in that db; `[]` = explicit deny-all in that db. |
 
 Example profile:
 
@@ -103,32 +109,66 @@ Tests:
 
 Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
-### 4. Per-Profile Role And Capability Restrictions
+### 4. Per-Profile Role And Capability Restrictions — DONE
 
-Global read, write, and management flags are useful, but customers may need different permissions per backend profile.
+Connection profiles narrow which tool capability tiers (`read` / `write` / `management`) may be invoked through them. **Default-deny semantics**: a profile that omits `allowedRoles` is treated as `["read"]` (read-only). A profile with `allowedRoles: []` is **explicit deny-all** and permits no tiers (the profile becomes unusable). Operators must explicitly list `"write"` and/or `"management"` to opt into those tiers per profile. This is a profile-side ceiling — it never broadens the global capability flags or the caller's role.
 
-Example profile shape:
+Profile fields:
+
+| Field | Type | Default | Behavior |
+|---|---|---|---|
+| `allowedRoles` | `("read" \| "write" \| "management")[]` | `["read"]` (when omitted) | Listed = exactly those tiers; omitted = `["read"]`; `[]` = explicit deny-all (no tiers). |
+| `allowWriteTools` | `boolean` | (no extra restriction) | Kill-switch. If `false`, the `write` tier is rejected through this profile even when listed in `allowedRoles`. |
+| `allowManagementTools` | `boolean` | (no extra restriction) | Same semantics as `allowWriteTools` but for the management tier. |
+
+When both `allowedRoles` and `allow*Tools` are set, **deny wins**: `allowWriteTools: false` rejects writes even if `allowedRoles` includes `write`. The booleans are useful as an emergency kill-switch on an otherwise write-capable profile.
+
+Example profiles:
 
 ```json
 {
   "prod-read": {
     "authMode": "entra",
     "endpoint": "prod.mongocluster.cosmos.azure.com",
+    "tokenScope": "https://ossrdbms-aad.database.windows.net/.default"
+  },
+  "sandbox-write": {
+    "authMode": "entra",
+    "endpoint": "sandbox.mongocluster.cosmos.azure.com",
     "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
-    "allowedRoles": ["read"],
-    "allowWriteTools": false,
-    "allowManagementTools": false
+    "allowedRoles": ["read", "write"]
   },
   "sandbox-admin": {
     "authMode": "entra",
     "endpoint": "sandbox.mongocluster.cosmos.azure.com",
     "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
-    "allowedRoles": ["management"]
+    "allowedRoles": ["read", "write", "management"]
   }
 }
 ```
 
-This lets one MCP server safely expose multiple backends with different risk levels.
+`prod-read` above has no `allowedRoles`, so it is read-only by default.
+
+Enforcement:
+
+- `withDbGuard` calls `assertProfileCapabilityAllowed(profileName, requiredRole)` after `assertAuthorized` and before `assertResourceAllowed`. Denials return `isError: true` with an actionable message naming the profile and the disallowed tier, and are routed through the existing audit-log deny path.
+- One MCP server can safely expose multiple backends with different risk levels: production profiles silently default to read-only, while sandbox profiles opt into broader tiers.
+
+Important — what this section does **not** cover:
+
+- This is a **profile-side** ceiling, not a **caller-to-profile binding**. Two callers with the same role claim can both pick the same profile name; section 4 has no notion of "caller A may use `prod-read` but not `sandbox-admin`." That gap is tracked in [docs/gaps-on-rbac.md](./gaps-on-rbac.md) (Gap 1).
+- Pipeline-internal namespaces are still subject to the same caveat noted in section 3 (tracked under section 4a as **Pipeline namespace enforcement**).
+
+Implementation:
+- [src/config.ts](../src/config.ts) — added `allowedRoles`, `allowWriteTools`, `allowManagementTools` to `ConnectionProfileConfig`
+- [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) — `assertProfileCapabilityAllowed` with default-deny (`["read"]`) for omitted/empty `allowedRoles`
+- [src/tools/utils/dbGuard.ts](../src/tools/utils/dbGuard.ts) — calls `assertProfileCapabilityAllowed` after `assertAuthorized`; deny path is audit-logged
+
+Tests:
+- [test/security/connectionProfiles.test.ts](../test/security/connectionProfiles.test.ts) — 9 new helper-level tests covering: omitted/empty `allowedRoles` → read-only deny matrix, allow/deny by tier, `allowWriteTools=false` deny (read still allowed), `allowManagementTools=false` deny, `allowWriteTools=true` no-op, deny-wins composition with `allowedRoles`, and unknown-profile no-op
+- [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — 8 new wiring tests covering: write-denied-by-`allowedRoles`, management-denied-by-`allowedRoles`, read-still-allowed pass-through, write-denied-by-`allowWriteTools`, management-denied-by-`allowManagementTools`, read-allowed-when-only-write+management-disabled, deny-wins (`allowedRoles` allows write but `allowWriteTools=false`), and read-only-default when no `allowedRoles` is configured
+
+Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
 ### 4a. Fine-Grained Data Exposure Controls
 

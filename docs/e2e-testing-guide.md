@@ -280,9 +280,30 @@ Each check sets `CONNECTION_PROFILES` to the JSON shown, restarts the server, th
 4. **`rename_collection` target check.** With the profile from step 3, call `rename_collection` with `collection_name="vehicles", new_collection_name="leaks"`. Expect deny on the new name; verify on the backend that the source collection is unchanged.
 5. **`list_databases` filtering — top level.** With the profile from step 1, call `list_databases` with no `db_name`. Expect the response `databases` array to contain only entries from the allowlist (`fleet`), and to omit any other databases the user has on the cluster.
 6. **`list_databases` filtering — per-db.** With the profile from step 3, call `list_databases` with `db_name="fleet"`. Expect `collections` to contain only `vehicles`.
-7. **Empty allowlist is unrestricted.** Use `'{"dev":{"uri":"mongodb://...","allowedDatabases":[]}}'`. Call `find_documents` against any database. Expect normal pass-through, identical to omitting the field.
+7. **Empty allowlist is explicit deny-all.** Use `'{"dev":{"uri":"mongodb://...","allowedDatabases":[]}}'`. Call `find_documents` against any database. Expect `isError: true` with `Database '<name>' is not allowed for connection profile 'dev'. Allowed databases: (none).` Then use `'{"dev":{"uri":"mongodb://...","allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}'` and call `find_documents` with `db_name="fleet", collection_name="vehicles"`. Expect `isError: true` with `Collection 'fleet.vehicles' is not allowed ... Allowed collections in 'fleet': (none).`
 
 If any of the above does not behave as expected, the allowlist is not wired and must be fixed before release.
+
+## 7c. Per-Profile Role And Capability Restrictions Verification
+
+Each check sets `CONNECTION_PROFILES` to the JSON shown, restarts the server (with `ENABLE_WRITE_TOOLS=true` and `ENABLE_MANAGEMENT_TOOLS=true` so the global flags don't mask the profile-level deny), then exercises the named tool. Restore the default profile JSON between checks.
+
+The semantics for `allowedRoles` are uniform with `allowedDatabases` / `allowedCollections[db]`:
+
+- omitted (`undefined`) → documented default `["read"]` (read-only)
+- listed (`[...]`) → exactly those tiers
+- empty (`[]`) → explicit deny-all (no tiers, not even read — the profile becomes unusable)
+
+1. **Default is read-only.** Use `'{"dev":{"uri":"mongodb://..."}}'` (no `allowedRoles`). Call `insert_documents`. Expect `isError: true` with `Tool tier 'write' is not allowed for connection profile 'dev'. Allowed tiers: read.`. Call `find_documents` against the same profile and expect a normal successful response.
+2. **Empty `allowedRoles` is explicit deny-all.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":[]}}'`. Call `find_documents`. Expect `isError: true` with `Tool tier 'read' is not allowed for connection profile 'dev'. Allowed tiers: (none).` (Even read is denied.)
+3. **Explicit `allowedRoles` denies tiers not listed.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write"]}}'`. Call `drop_collection`. Expect `isError: true` with `Tool tier 'management' is not allowed`. Then call `insert_documents` and expect a normal successful response.
+4. **`allowWriteTools=false` overrides explicit grant.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowWriteTools":false}}'`. Call `update_documents`. Expect `isError: true` with `Write tools are disabled for connection profile 'dev'`.
+5. **`allowManagementTools=false`.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowManagementTools":false}}'`. Call `drop_database` with the matching `confirm_db_name`. Expect `isError: true` with `Management tools are disabled for connection profile 'dev'`. Verify on the backend that the database still exists.
+6. **Read still works when only write+management are profile-disabled.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowWriteTools":false,"allowManagementTools":false}}'`. Call `count_documents`. Expect a normal successful response.
+7. **Deny-wins composition.** With the profile from step 4, call `delete_documents`. Expect `isError: true` with `Write tools are disabled` (the explicit deny beats the broader allow).
+8. **Full opt-in works.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"]}}'`. Call any management tool with proper confirmation. Expect normal successful behavior.
+
+If any of the above does not behave as expected, the per-profile capability gate is not wired and must be fixed before release.
 
 ## 8. Cleanup
 
