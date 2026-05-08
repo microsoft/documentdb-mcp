@@ -21,7 +21,7 @@ This is real defense — it correctly blocks unauthenticated callers, callers wi
 **Why the existing layers don't cover it.**
 - Entra token auth proves *identity*, but the capability mapping is global to the server — not scoped to a profile.
 - Per-profile resource allowlists (section 3) limit *what* a profile can touch, not *who* can pick it.
-- Section 4 as currently drafted (`allowedRoles`, `allowWriteTools`) narrows what the *profile* permits — still profile-centric, not caller-centric.
+- Section 4 as currently drafted (`allowedRoles`) narrows what the *profile* permits — still profile-centric, not caller-centric.
 
 **Closes when.** A new control is added that, at `resolveConnectionProfile` time, checks the caller's claims against a per-profile binding. Two reasonable shapes:
 

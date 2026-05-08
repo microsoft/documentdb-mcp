@@ -248,47 +248,6 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
         );
     });
 
-    it('rejects write tier when allowWriteTools is false', async () => {
-        const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowWriteTools":false}}',
-        );
-
-        expect(() => assertProfileCapabilityAllowed('dev', 'write')).toThrow(
-            /Write tools are disabled for connection profile 'dev'/,
-        );
-        expect(() => assertProfileCapabilityAllowed('dev', 'read')).not.toThrow();
-        expect(() => assertProfileCapabilityAllowed('dev', 'management')).not.toThrow();
-    });
-
-    it('rejects management tier when allowManagementTools is false', async () => {
-        const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowManagementTools":false}}',
-        );
-
-        expect(() => assertProfileCapabilityAllowed('dev', 'management')).toThrow(
-            /Management tools are disabled for connection profile 'dev'/,
-        );
-        expect(() => assertProfileCapabilityAllowed('dev', 'write')).not.toThrow();
-    });
-
-    it('treats allowWriteTools=true as no additional restriction', async () => {
-        const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write"],"allowWriteTools":true}}',
-        );
-
-        expect(() => assertProfileCapabilityAllowed('dev', 'write')).not.toThrow();
-    });
-
-    it('combines allowedRoles and allowWriteTools — both must pass', async () => {
-        // allowedRoles allows write, but allowWriteTools=false denies it. Deny wins.
-        const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write"],"allowWriteTools":false}}',
-        );
-
-        expect(() => assertProfileCapabilityAllowed('dev', 'write')).toThrow(/Write tools are disabled/);
-        expect(() => assertProfileCapabilityAllowed('dev', 'read')).not.toThrow();
-    });
-
     it('is a no-op for unknown profile (resolveConnectionProfile surfaces that)', async () => {
         const { assertProfileCapabilityAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
 

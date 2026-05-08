@@ -139,12 +139,6 @@ export function assertResourceAllowed(
  *   - empty (`[]`)         → **explicit deny-all** (no tiers, not even read)
  *   - listed (`[...]`)     → exactly those tiers
  *
- * Rules:
- *   - Effective allowed tiers = `["read"]` if `allowedRoles` is undefined, otherwise the array as-given.
- *   - `requiredRole` must appear in the effective list.
- *   - `allowWriteTools === false` adds an explicit deny for the `write` tier (kill-switch).
- *   - `allowManagementTools === false` adds an explicit deny for the `management` tier.
- *
  * Runs after the global `assertCapabilityEnabled` and `assertAuthorized` checks. This narrows what a profile permits;
  * it never broadens the global capability flags or the caller's role.
  */
@@ -155,7 +149,7 @@ export function assertProfileCapabilityAllowed(profileName: string, requiredRole
         return;
     }
 
-    const { allowedRoles, allowWriteTools, allowManagementTools } = profile;
+    const { allowedRoles } = profile;
     const effectiveRoles: ToolRole[] = allowedRoles === undefined ? ['read'] : allowedRoles;
 
     if (!effectiveRoles.includes(requiredRole)) {
@@ -164,13 +158,5 @@ export function assertProfileCapabilityAllowed(profileName: string, requiredRole
             `Tool tier '${requiredRole}' is not allowed for connection profile '${profileName}'. ` +
                 `Allowed tiers: ${allowedList}.`,
         );
-    }
-
-    if (requiredRole === 'write' && allowWriteTools === false) {
-        throw new Error(`Write tools are disabled for connection profile '${profileName}'.`);
-    }
-
-    if (requiredRole === 'management' && allowManagementTools === false) {
-        throw new Error(`Management tools are disabled for connection profile '${profileName}'.`);
     }
 }

@@ -118,10 +118,6 @@ Profile fields:
 | Field | Type | Default | Behavior |
 |---|---|---|---|
 | `allowedRoles` | `("read" \| "write" \| "management")[]` | `["read"]` (when omitted) | Listed = exactly those tiers; omitted = `["read"]`; `[]` = explicit deny-all (no tiers). |
-| `allowWriteTools` | `boolean` | (no extra restriction) | Kill-switch. If `false`, the `write` tier is rejected through this profile even when listed in `allowedRoles`. |
-| `allowManagementTools` | `boolean` | (no extra restriction) | Same semantics as `allowWriteTools` but for the management tier. |
-
-When both `allowedRoles` and `allow*Tools` are set, **deny wins**: `allowWriteTools: false` rejects writes even if `allowedRoles` includes `write`. The booleans are useful as an emergency kill-switch on an otherwise write-capable profile.
 
 Example profiles:
 
@@ -160,13 +156,13 @@ Important — what this section does **not** cover:
 - Pipeline-internal namespaces are still subject to the same caveat noted in section 3 (tracked under section 4a as **Pipeline namespace enforcement**).
 
 Implementation:
-- [src/config.ts](../src/config.ts) — added `allowedRoles`, `allowWriteTools`, `allowManagementTools` to `ConnectionProfileConfig`
-- [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) — `assertProfileCapabilityAllowed` with default-deny (`["read"]`) for omitted/empty `allowedRoles`
+- [src/config.ts](../src/config.ts) — added `allowedRoles` to `ConnectionProfileConfig`
+- [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) — `assertProfileCapabilityAllowed` with default-deny (`["read"]`) for omitted `allowedRoles` and explicit deny-all for `[]`
 - [src/tools/utils/dbGuard.ts](../src/tools/utils/dbGuard.ts) — calls `assertProfileCapabilityAllowed` after `assertAuthorized`; deny path is audit-logged
 
 Tests:
-- [test/security/connectionProfiles.test.ts](../test/security/connectionProfiles.test.ts) — 9 new helper-level tests covering: omitted/empty `allowedRoles` → read-only deny matrix, allow/deny by tier, `allowWriteTools=false` deny (read still allowed), `allowManagementTools=false` deny, `allowWriteTools=true` no-op, deny-wins composition with `allowedRoles`, and unknown-profile no-op
-- [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — 8 new wiring tests covering: write-denied-by-`allowedRoles`, management-denied-by-`allowedRoles`, read-still-allowed pass-through, write-denied-by-`allowWriteTools`, management-denied-by-`allowManagementTools`, read-allowed-when-only-write+management-disabled, deny-wins (`allowedRoles` allows write but `allowWriteTools=false`), and read-only-default when no `allowedRoles` is configured
+- [test/security/connectionProfiles.test.ts](../test/security/connectionProfiles.test.ts) — helper-level tests covering: omitted `allowedRoles` → read-only deny matrix, `[]` → explicit deny-all (even read), allow/deny by tier, and unknown-profile no-op
+- [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — wiring tests covering: write-denied-by-`allowedRoles`, management-denied-by-`allowedRoles`, read-still-allowed pass-through, read-only-default when `allowedRoles` is omitted, and `allowedRoles: []` denies even read tools
 
 Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 

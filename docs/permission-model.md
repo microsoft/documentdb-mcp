@@ -143,7 +143,7 @@ Not strictly a permission check, but the resolution can fail (unknown profile na
 | Aspect | Detail |
 |---|---|
 | Where | [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) |
-| Inputs | `allowedRoles` (and optional `allowWriteTools`, `allowManagementTools`) on the resolved profile |
+| Inputs | `allowedRoles` on the resolved profile |
 | Default | omitted → effective `["read"]` (**read-only by default**); `[]` → **explicit deny-all** (no tiers, profile unusable); `[...]` → exactly those tiers |
 | Effect | Narrows what the *profile* permits; cannot broaden the global flag or the caller's role |
 | On deny | "Tool tier 'write' is not allowed for connection profile 'dev'. Allowed tiers: read." (or `(none)` for `[]`) |
@@ -232,7 +232,6 @@ There is no escalation path: a more permissive layer cannot override a stricter 
 Within a single layer, the rule for combinations is:
 
 - **Uniform field semantics across `allowedRoles` / `allowedDatabases` / `allowedCollections[db]`:** `undefined` → documented default; `[...]` → narrow to listed; `[]` → **explicit deny-all** (lock-to-nothing). The deny-all case is rare in practice but lets operators express "this profile sees nothing" without inventing a sentinel.
-- **Profile tier (`assertProfileCapabilityAllowed`):** if both `allowedRoles` and the explicit kill-switches (`allowWriteTools`, `allowManagementTools`) are present, **deny wins**. Setting `allowWriteTools: false` rejects writes even when `allowedRoles` includes `write`. (The kill-switches are largely redundant under the read-only default; they exist as an emergency one-token deny on otherwise write-capable profiles.)
 - **Profile resource scope (`assertResourceAllowed`):** an undefined `allowedDatabases` / `allowedCollections[db]` is unrestricted; `[]` is explicit deny-all; per-collection check only runs once the database itself passes.
 
 ## What the model does *not* yet cover

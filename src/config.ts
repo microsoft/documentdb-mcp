@@ -46,17 +46,6 @@ export interface ConnectionProfileConfig {
      * This narrows what the profile permits; it never broadens global capability flags or the caller's role.
      */
     allowedRoles?: ToolRole[];
-    /**
-     * Optional kill-switch for write tools at the profile level. When `false`, write-tier tools are rejected
-     * through this profile even if `allowedRoles` includes `"write"`. When `true` or omitted, no extra restriction
-     * is applied beyond `allowedRoles`. Redundant with the read-only default unless `allowedRoles` grants `write`.
-     */
-    allowWriteTools?: boolean;
-    /**
-     * Optional kill-switch for management tools at the profile level. Same semantics as `allowWriteTools` but for
-     * the management tier (drop_*, rename_collection, current_ops, create_index, drop_index, etc.).
-     */
-    allowManagementTools?: boolean;
 }
 
 export interface MCPConfig {
