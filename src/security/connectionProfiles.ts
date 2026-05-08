@@ -1,4 +1,4 @@
-import { config } from '../config';
+import { config, type ToolRole } from '../config';
 import { type DocumentDBConnectionConfig } from '../context/documentdb';
 
 function endpointToMongoUri(endpoint: string, tls: boolean | undefined): string {
@@ -62,7 +62,8 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
 }
 
 /**
- * Resource scope advertised by a connection profile. Empty arrays / undefined fields mean "no restriction".
+ * Resource scope advertised by a connection profile.
+ * Field semantics: undefined = unrestricted, [] = explicit deny-all, [...] = narrow to listed entries.
  */
 export interface ProfileScope {
     allowedDatabases?: string[];
@@ -85,10 +86,12 @@ export function getProfileScope(profileName: string): ProfileScope {
 /**
  * Reject tool calls that target a database or collection not listed in the profile's allowlist.
  *
- * Rules:
- *   - If `allowedDatabases` is undefined or empty, all databases pass.
+ * Rules (uniform with `allowedRoles`: omitted = default, listed = narrow, empty = explicit deny-all):
+ *   - If `allowedDatabases` is undefined, all databases pass.
+ *   - If `allowedDatabases` is an empty array, **no databases pass** (explicit lock-to-nothing).
  *   - If `allowedDatabases` is set, `dbName` must be present in the list (case-sensitive).
  *   - If `allowedCollections[dbName]` is undefined, all collections in that db pass.
+ *   - If `allowedCollections[dbName]` is an empty array, **no collections in that db pass**.
  *   - If `allowedCollections[dbName]` is set, `collectionName` must be present in that list.
  *
  * Fails closed with an actionable error so callers get a clear message instead of a backend permission error.
@@ -106,22 +109,54 @@ export function assertResourceAllowed(
     const { dbName, collectionName } = target;
     const { allowedDatabases, allowedCollections } = profile;
 
-    if (dbName && allowedDatabases && allowedDatabases.length > 0) {
+    if (dbName && allowedDatabases !== undefined) {
         if (!allowedDatabases.includes(dbName)) {
+            const allowedList = allowedDatabases.length > 0 ? allowedDatabases.join(', ') : '(none)';
             throw new Error(
                 `Database '${dbName}' is not allowed for connection profile '${profileName}'. ` +
-                    `Allowed databases: ${allowedDatabases.join(', ')}.`,
+                    `Allowed databases: ${allowedList}.`,
             );
         }
     }
 
     if (dbName && collectionName && allowedCollections) {
         const perDb = allowedCollections[dbName];
-        if (perDb && perDb.length > 0 && !perDb.includes(collectionName)) {
+        if (perDb !== undefined && !perDb.includes(collectionName)) {
+            const allowedList = perDb.length > 0 ? perDb.join(', ') : '(none)';
             throw new Error(
                 `Collection '${dbName}.${collectionName}' is not allowed for connection profile '${profileName}'. ` +
-                    `Allowed collections in '${dbName}': ${perDb.join(', ')}.`,
+                    `Allowed collections in '${dbName}': ${allowedList}.`,
             );
         }
+    }
+}
+
+/**
+ * Reject tool calls whose required capability tier is not permitted by the profile.
+ *
+ * Uniform `allowedRoles` semantics (mirrors `allowedDatabases` / `allowedCollections`):
+ *   - omitted (`undefined`) → documented default `["read"]` (read-only)
+ *   - empty (`[]`)         → **explicit deny-all** (no tiers, not even read)
+ *   - listed (`[...]`)     → exactly those tiers
+ *
+ * Runs after the global `assertCapabilityEnabled` and `assertAuthorized` checks. This narrows what a profile permits;
+ * it never broadens the global capability flags or the caller's role.
+ */
+export function assertProfileCapabilityAllowed(profileName: string, requiredRole: ToolRole): void {
+    const profile = config.connectionProfiles[profileName];
+    if (!profile) {
+        // resolveConnectionProfile will surface the unknown-profile error; nothing to enforce here.
+        return;
+    }
+
+    const { allowedRoles } = profile;
+    const effectiveRoles: ToolRole[] = allowedRoles === undefined ? ['read'] : allowedRoles;
+
+    if (!effectiveRoles.includes(requiredRole)) {
+        const allowedList = effectiveRoles.length > 0 ? effectiveRoles.join(', ') : '(none)';
+        throw new Error(
+            `Tool tier '${requiredRole}' is not allowed for connection profile '${profileName}'. ` +
+                `Allowed tiers: ${allowedList}.`,
+        );
     }
 }

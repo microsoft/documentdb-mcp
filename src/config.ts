@@ -22,16 +22,30 @@ export interface ConnectionProfileConfig {
     allowedHosts?: string[];
     /**
      * Optional allowlist of databases this profile may access.
-     * If omitted/empty, all databases are allowed (backward compatible).
-     * If set, any tool call whose `db_name` is not in this list is rejected before contacting the backend.
+     * Field semantics (uniform with `allowedRoles` / `allowedCollections`):
+     *   - omitted (`undefined`) → all databases allowed
+     *   - empty (`[]`)         → explicit deny-all (no databases pass through this profile)
+     *   - listed (`[...]`)     → only the listed databases are allowed
+     * Enforced before contacting the backend; non-matching `db_name` is rejected with an actionable error.
      */
     allowedDatabases?: string[];
     /**
      * Optional per-database collection allowlist.
-     * If `allowedCollections[db]` is omitted, all collections in that db are allowed (subject to `allowedDatabases`).
-     * If `allowedCollections[db]` is set, only listed collections are allowed.
+     * Field semantics (uniform with `allowedRoles` / `allowedDatabases`):
+     *   - `allowedCollections[db]` omitted    → all collections in that db are allowed (subject to `allowedDatabases`)
+     *   - `allowedCollections[db]` is `[]`    → explicit deny-all collections in that db
+     *   - `allowedCollections[db]` is `[...]` → only listed collections are allowed in that db
      */
     allowedCollections?: Record<string, string[]>;
+    /**
+     * Optional per-profile allowlist of tool capability tiers (read / write / management).
+     * Field semantics (uniform with `allowedDatabases` / `allowedCollections`):
+     *   - omitted (`undefined`) → documented default `["read"]` (read-only)
+     *   - empty (`[]`)         → explicit deny-all (no tiers, not even read — the profile becomes unusable)
+     *   - listed (`[...]`)     → exactly those tiers are permitted
+     * This narrows what the profile permits; it never broadens global capability flags or the caller's role.
+     */
+    allowedRoles?: ToolRole[];
 }
 
 export interface MCPConfig {

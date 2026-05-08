@@ -31,11 +31,11 @@ export function registerDatabaseTools(server: McpServer): void {
         withDbGuard({ toolName: 'list_databases', requiredRole: 'read' }, async ({ connection_profile, db_name }, client) => {
             const scope = getProfileScope(connection_profile);
             const allowedDbs = scope.allowedDatabases;
-            const dbAllowed = (name: string) =>
-                !allowedDbs || allowedDbs.length === 0 || allowedDbs.includes(name);
+            // Field semantics: undefined = unrestricted, [] = explicit deny-all, [...] = narrow to listed.
+            const dbAllowed = (name: string) => allowedDbs === undefined || allowedDbs.includes(name);
             const collectionAllowed = (db: string, collectionName: string) => {
                 const perDb = scope.allowedCollections?.[db];
-                return !perDb || perDb.length === 0 || perDb.includes(collectionName);
+                return perDb === undefined || perDb.includes(collectionName);
             };
 
             if (!db_name) {

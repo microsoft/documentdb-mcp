@@ -105,7 +105,8 @@ async function setupRegisteredTools(extraEnv: Record<string, string> = {}) {
     process.env = {
         ...originalEnv,
         AUTH_REQUIRED: 'false',
-        CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake"}}',
+        CONNECTION_PROFILES:
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"]}}',
         ENABLE_READ_TOOLS: 'true',
         ENABLE_WRITE_TOOLS: 'true',
         ENABLE_MANAGEMENT_TOOLS: 'true',
@@ -668,7 +669,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
     });
 
     const allowlistedProfile =
-        '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+        '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
 
     it('rejects a tool call targeting a database outside allowedDatabases', async () => {
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlistedProfile });
@@ -776,5 +777,152 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
 
         expect(response.isError).toBeUndefined();
         expect(collection.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats allowedDatabases:[] as explicit deny-all at the wiring layer', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":[]}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /Database 'fleet' is not allowed.*Allowed databases: \(none\)\./,
+        );
+        expect(collection.find).not.toHaveBeenCalled();
+    });
+
+    it('treats allowedCollections[db]:[] as explicit deny-all at the wiring layer', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.count_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /Collection 'fleet\.vehicles' is not allowed.*Allowed collections in 'fleet': \(none\)\./,
+        );
+        expect(collection.countDocuments).not.toHaveBeenCalled();
+    });
+
+    it('list_databases returns empty when allowedDatabases:[] (deny-all)', async () => {
+        const profiles = '{"dev":{"uri":"mongodb://fake","allowedDatabases":[]}}';
+        const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
+
+        expect(response.databases).toEqual([]);
+    });
+});
+
+describe('registered DocumentDB tools — per-profile capability tier restrictions', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    it('rejects a write tool when allowedRoles excludes write', async () => {
+        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":["read"]}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.insert_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            documents: [{ x: 1 }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Tool tier 'write' is not allowed for connection profile 'dev'/);
+        expect(collection.insertOne).not.toHaveBeenCalled();
+        expect(collection.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a management tool when allowedRoles excludes management', async () => {
+        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write"]}}';
+        const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.drop_collection.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            confirm_collection_name: 'vehicles',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Tool tier 'management' is not allowed/);
+    });
+
+    it('allows a read tool when allowedRoles=["read"]', async () => {
+        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":["read"]}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const response = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(response.isError).toBeUndefined();
+        expect(collection.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('defaults to read-only when no allowedRoles is configured', async () => {
+        // Override the test scaffolding's permissive default with a profile that omits allowedRoles entirely.
+        const profiles = '{"dev":{"uri":"mongodb://fake"}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        // Read tool succeeds.
+        const readResponse = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+        expect(readResponse.isError).toBeUndefined();
+        expect(collection.find).toHaveBeenCalledTimes(1);
+
+        // Write tool denied by the read-only default.
+        const writeResult = await tools.insert_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            documents: [{ x: 1 }],
+        });
+        expect(writeResult.isError).toBe(true);
+        expect(writeResult.content[0].text).toMatch(/Tool tier 'write' is not allowed.*Allowed tiers: read\./);
+        expect(collection.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('treats allowedRoles:[] as explicit deny-all (denies even read tools)', async () => {
+        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":[]}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /Tool tier 'read' is not allowed.*Allowed tiers: \(none\)\./,
+        );
+        expect(collection.find).not.toHaveBeenCalled();
     });
 });

@@ -2,7 +2,7 @@ import { type MongoClient } from 'mongodb';
 import { withDocumentDBClient } from '../../context/documentdb';
 import { auditToolInvocation } from '../../security/audit';
 import { assertAuthorized, assertCapabilityEnabled } from '../../security/authorization';
-import { assertResourceAllowed, resolveConnectionProfile } from '../../security/connectionProfiles';
+import { assertProfileCapabilityAllowed, assertResourceAllowed, resolveConnectionProfile } from '../../security/connectionProfiles';
 import { type SecureToolInput, type ToolSecurityPolicy } from './toolSecurity';
 
 export function withDbGuard<Inp extends SecureToolInput>(
@@ -31,6 +31,9 @@ export function withDbGuard<Inp extends SecureToolInput>(
             assertCapabilityEnabled(policy.requiredRole);
             assertAuthorized(policy.requiredRole);
             const connection = resolveConnectionProfile(input.connection_profile);
+            // Enforce per-profile capability tier (allowedRoles / allowWriteTools / allowManagementTools).
+            // Profiles with no role/capability config pass through unchanged.
+            assertProfileCapabilityAllowed(input.connection_profile, policy.requiredRole);
             // Enforce per-profile database/collection allowlists for both the source resource
             // and (when present) the rename target. Profiles with no allowlist pass through unchanged.
             assertResourceAllowed(input.connection_profile, {
