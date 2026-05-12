@@ -124,6 +124,64 @@ await check(
     ({ isError, text }) => (isError && /Tool tier 'management' is not allowed/.test(text)) || `expected management deny`,
 );
 
+console.log('\n## Section 7d — Fine-Grained Data Exposure Controls\n');
+
+await check(
+    '7d.1 deniedDatabases wins over allowedDatabases',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet","secrets"],"deniedDatabases":["secrets"]}}' },
+    { name: 'find_documents', arguments: { connection_profile: 'dev', db_name: 'secrets', collection_name: 'x', query: {} } },
+    ({ isError, text }) => (isError && /Database 'secrets' is denied for connection profile 'dev'\./.test(text)) || `expected denylist deny`,
+);
+
+await check(
+    '7d.2 deniedCollections wins over allowedCollections',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedCollections":{"fleet":["vehicles","audit_log"]},"deniedCollections":{"fleet":["audit_log"]}}}' },
+    { name: 'find_documents', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'audit_log', query: {} } },
+    ({ isError, text }) => (isError && /Collection 'fleet\.audit_log' is denied for connection profile 'dev'\./.test(text)) || `expected collection denylist deny`,
+);
+
+await check(
+    '7d.4 readOnly:true denies write tools regardless of allowedRoles',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"readOnly":true}}' },
+    { name: 'insert_documents', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', documents: [{ x: 1 }] } },
+    ({ isError, text }) => (isError && /Tool tier 'write' is not allowed.*Profile is configured as readOnly\./.test(text)) || `expected readOnly deny on write`,
+);
+
+await check(
+    '7d.5 readOnly:true denies management tools',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"readOnly":true}}' },
+    { name: 'drop_collection', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', confirm_collection_name: 'vehicles' } },
+    ({ isError, text }) => (isError && /Tool tier 'management' is not allowed.*Profile is configured as readOnly\./.test(text)) || `expected readOnly deny on management`,
+);
+
+await check(
+    '7d.6 pipeline $lookup.from is gated by collection allowlist',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}' },
+    { name: 'aggregate', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', pipeline: [{ $lookup: { from: 'audit_log', localField: 'id', foreignField: 'vid', as: 'a' } }] } },
+    ({ isError, text }) => (isError && /Aggregation stage \$lookup references fleet\.audit_log:.*Collection 'fleet\.audit_log' is not allowed/.test(text)) || `expected pipeline lookup deny`,
+);
+
+await check(
+    '7d.7 pipeline $unionWith is gated by denylist',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}' },
+    { name: 'aggregate', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', pipeline: [{ $unionWith: 'audit_log' }] } },
+    ({ isError, text }) => (isError && /Aggregation stage \$unionWith references fleet\.audit_log:.*denied/.test(text)) || `expected pipeline unionWith deny`,
+);
+
+await check(
+    '7d.8 cross-database $lookup is gated',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"]}}' },
+    { name: 'aggregate', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', pipeline: [{ $lookup: { from: { db: 'secrets', coll: 'passwords' }, as: 'p' } }] } },
+    ({ isError, text }) => (isError && /Aggregation stage \$lookup references secrets\.passwords:.*Database 'secrets' is not allowed/.test(text)) || `expected cross-db lookup deny`,
+);
+
+await check(
+    '7d.9 explain_operation aggregate is gated',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}' },
+    { name: 'explain_operation', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', operation: 'aggregate', pipeline: [{ $lookup: { from: 'audit_log', as: 'a' } }] } },
+    ({ isError, text }) => (isError && /Aggregation stage \$lookup references fleet\.audit_log/.test(text)) || `expected explain pipeline deny`,
+);
+
 console.log('\n## Bonus stdio gates (sanity)\n');
 
 await check(

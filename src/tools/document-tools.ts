@@ -311,6 +311,8 @@ export function registerDocumentTools(server: McpServer): void {
                     },
                 ]);
                 assertAggregatePipelineIsReadOnly(parsed.pipeline as unknown[]);
+                // Per-profile resource scope on every namespace referenced from inside the pipeline
+                // is already enforced by withDbGuard via assertPipelineNamespacesAllowed (pre-connection).
                 const results = await client
                     .db(db_name)
                     .collection(collection_name)
@@ -410,6 +412,7 @@ export function registerDocumentTools(server: McpServer): void {
                         { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
                     ]);
                     assertAggregatePipelineIsReadOnly(parsed.pipeline as unknown[]);
+                    // Pipeline namespace scope already enforced by withDbGuard (pre-connection).
                     const command = {
                         explain: { aggregate: collection_name, pipeline: parsed.pipeline as any[], cursor: {} },
                         verbosity: 'executionStats',

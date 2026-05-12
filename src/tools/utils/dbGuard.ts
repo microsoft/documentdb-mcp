@@ -3,7 +3,21 @@ import { withDocumentDBClient } from '../../context/documentdb';
 import { auditToolInvocation } from '../../security/audit';
 import { assertAuthorized, assertCapabilityEnabled } from '../../security/authorization';
 import { assertProfileCapabilityAllowed, assertResourceAllowed, resolveConnectionProfile } from '../../security/connectionProfiles';
+import { assertPipelineNamespacesAllowed } from './pipelineNamespaces';
 import { type SecureToolInput, type ToolSecurityPolicy } from './toolSecurity';
+
+function normalizePipeline(raw: unknown): unknown {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string' && raw.trim().length > 0) {
+        try {
+            return JSON.parse(raw);
+        } catch {
+            // Defer to the in-handler parser to surface a clear parse error; namespace walker no-ops.
+            return undefined;
+        }
+    }
+    return undefined;
+}
 
 export function withDbGuard<Inp extends SecureToolInput>(
     policy: ToolSecurityPolicy,
@@ -31,11 +45,11 @@ export function withDbGuard<Inp extends SecureToolInput>(
             assertCapabilityEnabled(policy.requiredRole);
             assertAuthorized(policy.requiredRole);
             const connection = resolveConnectionProfile(input.connection_profile);
-            // Enforce per-profile capability tier (allowedRoles / allowWriteTools / allowManagementTools).
+            // Enforce per-profile capability tier (allowedRoles, readOnly).
             // Profiles with no role/capability config pass through unchanged.
             assertProfileCapabilityAllowed(input.connection_profile, policy.requiredRole);
-            // Enforce per-profile database/collection allowlists for both the source resource
-            // and (when present) the rename target. Profiles with no allowlist pass through unchanged.
+            // Enforce per-profile database/collection allow+deny lists for the source resource
+            // and (when present) the rename target. Profiles with no scope pass through unchanged.
             assertResourceAllowed(input.connection_profile, {
                 dbName: input.db_name,
                 collectionName: input.collection_name,
@@ -45,6 +59,16 @@ export function withDbGuard<Inp extends SecureToolInput>(
                     dbName: input.db_name,
                     collectionName: input.new_collection_name,
                 });
+            }
+            // Enforce per-profile resource scope on every namespace referenced from inside an
+            // aggregation pipeline. Runs before the backend connection is opened so denies fail fast.
+            // Skipped when input.pipeline is missing or (for explain_operation) when operation !== 'aggregate'.
+            const pipelineApplies = input.pipeline !== undefined && (input.operation === undefined || input.operation === 'aggregate');
+            if (pipelineApplies && input.db_name) {
+                const normalized = normalizePipeline(input.pipeline);
+                if (normalized !== undefined) {
+                    assertPipelineNamespacesAllowed(input.connection_profile, input.db_name, normalized);
+                }
             }
             authorized = true;
             auditToolInvocation({

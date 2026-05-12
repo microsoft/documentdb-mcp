@@ -46,6 +46,31 @@ export interface ConnectionProfileConfig {
      * This narrows what the profile permits; it never broadens global capability flags or the caller's role.
      */
     allowedRoles?: ToolRole[];
+    /**
+     * Optional per-profile blocklist of databases. Deny wins over `allowedDatabases`.
+     * Field semantics:
+     *   - omitted (`undefined`) → no databases are explicitly denied
+     *   - empty (`[]`)         → no databases are explicitly denied (treated same as omitted)
+     *   - listed (`[...]`)     → listed databases are denied even if otherwise allowed
+     * Useful for "allow everything except these" patterns without enumerating every allowed db.
+     */
+    deniedDatabases?: string[];
+    /**
+     * Optional per-database collection blocklist. Deny wins over `allowedCollections`.
+     * Field semantics:
+     *   - `deniedCollections[db]` omitted    → no collections in that db are denied
+     *   - `deniedCollections[db]` is `[]`    → no collections in that db are denied (same as omitted)
+     *   - `deniedCollections[db]` is `[...]` → listed collections are denied even if otherwise allowed
+     */
+    deniedCollections?: Record<string, string[]>;
+    /**
+     * Optional per-profile read-only switch. When `true`, the effective allowed tiers are forced
+     * to `["read"]` regardless of `allowedRoles`. Acts as a one-line operator kill-switch on top
+     * of `allowedRoles`; never broadens what `allowedRoles` permits.
+     *   - omitted / `false` → no effect (allowedRoles applies as-is)
+     *   - `true`            → only `read` tier permitted; `write` and `management` denied
+     */
+    readOnly?: boolean;
 }
 
 export interface MCPConfig {

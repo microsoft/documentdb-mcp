@@ -63,15 +63,18 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
 
 /**
  * Resource scope advertised by a connection profile.
- * Field semantics: undefined = unrestricted, [] = explicit deny-all, [...] = narrow to listed entries.
+ * Field semantics: undefined = unrestricted, [] = explicit deny-all (allow*), [...] = narrow to listed entries.
+ * Denylists (denied*) are deny-wins overlays on top of the allowlist.
  */
 export interface ProfileScope {
     allowedDatabases?: string[];
     allowedCollections?: Record<string, string[]>;
+    deniedDatabases?: string[];
+    deniedCollections?: Record<string, string[]>;
 }
 
 /**
- * Return the profile's allowlist scope (or empty scope if none configured).
+ * Return the profile's allowlist + denylist scope (or empty scope if none configured).
  * Callers needing to filter list responses (e.g. list_databases) read this directly.
  */
 export function getProfileScope(profileName: string): ProfileScope {
@@ -80,19 +83,26 @@ export function getProfileScope(profileName: string): ProfileScope {
     return {
         allowedDatabases: profile.allowedDatabases,
         allowedCollections: profile.allowedCollections,
+        deniedDatabases: profile.deniedDatabases,
+        deniedCollections: profile.deniedCollections,
     };
 }
 
 /**
- * Reject tool calls that target a database or collection not listed in the profile's allowlist.
+ * Reject tool calls that target a database or collection not listed in the profile's allowlist,
+ * or explicitly listed in the profile's denylist (deny wins).
  *
- * Rules (uniform with `allowedRoles`: omitted = default, listed = narrow, empty = explicit deny-all):
- *   - If `allowedDatabases` is undefined, all databases pass.
+ * Allowlist rules (uniform with `allowedRoles`: omitted = default, listed = narrow, empty = explicit deny-all):
+ *   - If `allowedDatabases` is undefined, all databases pass the allowlist gate.
  *   - If `allowedDatabases` is an empty array, **no databases pass** (explicit lock-to-nothing).
  *   - If `allowedDatabases` is set, `dbName` must be present in the list (case-sensitive).
- *   - If `allowedCollections[dbName]` is undefined, all collections in that db pass.
+ *   - If `allowedCollections[dbName]` is undefined, all collections in that db pass the allowlist gate.
  *   - If `allowedCollections[dbName]` is an empty array, **no collections in that db pass**.
  *   - If `allowedCollections[dbName]` is set, `collectionName` must be present in that list.
+ *
+ * Denylist rules (deny wins; checked before the allowlist so denials always win):
+ *   - If `deniedDatabases` includes `dbName`, the call is denied even if the allowlist would permit it.
+ *   - If `deniedCollections[dbName]` includes `collectionName`, the call is denied.
  *
  * Fails closed with an actionable error so callers get a clear message instead of a backend permission error.
  */
@@ -107,7 +117,22 @@ export function assertResourceAllowed(
     }
 
     const { dbName, collectionName } = target;
-    const { allowedDatabases, allowedCollections } = profile;
+    const { allowedDatabases, allowedCollections, deniedDatabases, deniedCollections } = profile;
+
+    // Denylists run first — deny wins.
+    if (dbName && deniedDatabases && deniedDatabases.includes(dbName)) {
+        throw new Error(
+            `Database '${dbName}' is denied for connection profile '${profileName}'.`,
+        );
+    }
+    if (dbName && collectionName && deniedCollections) {
+        const deniedPerDb = deniedCollections[dbName];
+        if (deniedPerDb && deniedPerDb.includes(collectionName)) {
+            throw new Error(
+                `Collection '${dbName}.${collectionName}' is denied for connection profile '${profileName}'.`,
+            );
+        }
+    }
 
     if (dbName && allowedDatabases !== undefined) {
         if (!allowedDatabases.includes(dbName)) {
@@ -149,14 +174,18 @@ export function assertProfileCapabilityAllowed(profileName: string, requiredRole
         return;
     }
 
-    const { allowedRoles } = profile;
-    const effectiveRoles: ToolRole[] = allowedRoles === undefined ? ['read'] : allowedRoles;
+    const { allowedRoles, readOnly } = profile;
+    const baseRoles: ToolRole[] = allowedRoles === undefined ? ['read'] : allowedRoles;
+    // readOnly=true forces the effective set to the intersection with ['read'].
+    // It can never broaden what allowedRoles permits.
+    const effectiveRoles: ToolRole[] = readOnly === true ? baseRoles.filter((r) => r === 'read') : baseRoles;
 
     if (!effectiveRoles.includes(requiredRole)) {
         const allowedList = effectiveRoles.length > 0 ? effectiveRoles.join(', ') : '(none)';
+        const readOnlySuffix = readOnly === true && requiredRole !== 'read' ? " Profile is configured as readOnly." : '';
         throw new Error(
             `Tool tier '${requiredRole}' is not allowed for connection profile '${profileName}'. ` +
-                `Allowed tiers: ${allowedList}.`,
+                `Allowed tiers: ${allowedList}.${readOnlySuffix}`,
         );
     }
 }
