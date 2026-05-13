@@ -4,6 +4,41 @@
 
 DocumentDB MCP Server is a Model Context Protocol server built for DocumentDB, allowing MCP clients or AI agents to access Azure DocumentDB / MongoDB-compatible DocumentDB in a controlled way. It exposes common database, collection, index, and document operations as MCP tools that can be invoked by VS Code agent, Copilot, Claude Desktop, or custom MCP clients. The server's core responsibility is to provide a tool execution entry point and apply authentication, authorization, connection configuration, and safety controls on the server side. All database tools are stateless and require an administrator-defined `connection_profile` on every call.
 
+At a high level, the MCP server sits between the developer's MCP client and the external DocumentDB cluster. The client decides what tool to call, but the server owns the security boundary: it validates caller identity, checks tool capability, resolves the administrator-defined connection profile, applies resource and operation-level restrictions, and only then opens a database connection.
+
+```mermaid
+flowchart LR
+  subgraph Dev["Developer environment"]
+    U["User"] --> V["VS Code / MCP Client"]
+    V --> A["AI Agent"]
+  end
+
+  subgraph IdP["Microsoft Entra ID"]
+    E["Bearer token<br/>roles / groups / scopes"]
+  end
+
+  subgraph Server["DocumentDB MCP Server"]
+    T["MCP transport<br/>stdio / HTTP / SSE"] --> Auth["Authentication<br/>validate token"]
+    Auth --> RBAC["Authorization<br/>read / write / management"]
+    RBAC --> Profile["Connection profile<br/>allowed roles / dbs / collections / hosts"]
+    Profile --> Safety["Tool-specific safety controls<br/>confirm destructive targets<br/>block write aggregation stages<br/>limit query and response size"]
+    Safety --> Audit["Audit allow / deny"]
+  end
+
+  subgraph Data["External DocumentDB cluster"]
+    DB[("Databases / collections / indexes / documents")]
+  end
+
+  A -->|"MCP tool call + parameters"| T
+  V -->|"HTTP/SSE token"| E
+  E -->|"validated by server"| Auth
+  Audit -->|"allowed operation only"| DB
+  DB -->|"bounded result"| Audit
+  Audit -->|"tool response"| A
+```
+
+The main workflow is: the agent sends an MCP tool call with parameters such as `connection_profile`, `db_name`, `collection_name`, query, or mutation payload; the server evaluates the request against its security controls; allowed requests are executed against the external cluster; denied requests are rejected and audited before a database connection is opened.
+
 ## 2. Features
 
 ### Tools And Capability Levels
@@ -215,36 +250,13 @@ Why this helps:
 
 This is not redundant with authentication, RBAC, or profile-level checks. Those earlier gates answer **who** can call a tool and **which backend/resource scope** the tool may target. Tool-specific controls answer whether this particular operation is safe enough to execute after authorization has already passed, such as whether a destructive target was explicitly confirmed, whether an aggregation contains write stages, or whether the requested result size is too large.
 
-#### Server-Side Guard Pipeline
+#### Server-Side Guard Cases
 
-All database tools are wrapped by `withDbGuard`, which applies the same enforcement path before opening a database connection.
-
-```mermaid
-flowchart TD
-    A["MCP tool call"] --> B{"connection_profile provided?"}
-    B -->|No| X["Reject"]
-    B -->|Yes| C["Global capability enabled?"]
-    C --> D["Caller has required MCP role?"]
-    D --> E["Resolve administrator-defined profile"]
-    E --> F["Profile allows required level?"]
-    F --> G["Profile allows target db/collection?"]
-    G --> H["Tool-specific checks"]
-    H --> I["Audit allow"]
-    I --> J["Open DocumentDB client"]
-    J --> K["Execute operation"]
-    K --> L["Apply response size cap"]
-
-    C -.deny.-> Y["Audit deny + return MCP error"]
-    D -.deny.-> Y
-    E -.deny.-> Y
-    F -.deny.-> Y
-    G -.deny.-> Y
-    H -.deny.-> Y
-```
+All database tools are wrapped by `withDbGuard`, which applies the same enforcement path before opening a database connection. The important point is that authorization, profile resolution, resource scoping, tool-specific checks, and audit logging are enforced on the server side rather than delegated to the MCP client.
 
 Example:
 
-- A caller with `DocumentDB.MCP.Read` invokes `find_documents` against `connection_profile=prod-read`, `db_name=fleet`, and `collection_name=vehicles`. If read tools are enabled and the profile allows `read` plus `fleet.vehicles`, the request passes the decision tree and reaches the backend.
+- A caller with `DocumentDB.MCP.Read` invokes `find_documents` against `connection_profile=prod-read`, `db_name=fleet`, and `collection_name=vehicles`. If read tools are enabled and the profile allows `read` plus `fleet.vehicles`, the request passes server-side guard checks and reaches the backend.
 - The same caller invokes `insert_documents`. If `ENABLE_WRITE_TOOLS=false`, the request is denied at `Global capability enabled?`. If write tools are globally enabled but `prod-read.allowedRoles=["read"]`, the request is denied at `Profile allows required level?`.
 - The same caller invokes `find_documents` against `db_name=payroll`. If `payroll` is not in `allowedDatabases`, the request is denied at `Profile allows target db/collection?` before any database connection is opened.
 
@@ -257,6 +269,65 @@ Why this helps:
 - Denied actions are explainable.
 - Allowed actions are attributable to the caller identity available at the MCP boundary.
 - Incident response has MCP-level evidence rather than only backend database logs.
+
+### Auth Scenarios
+
+The MCP server's auth model is not meant to replace DocumentDB database permissions. It adds a server-side business safety boundary for AI-agent-mediated operations. This matters because a person may legitimately have broad or even admin-level access to a DocumentDB cluster, while the MCP workflow they are performing should still be constrained to a narrower task scope.
+
+#### Scenario 1: Production Admin Doing Read-Only Investigation
+
+A database administrator may already have broad admin permissions on the production DocumentDB cluster. However, when the administrator connects through the MCP server for an AI-assisted incident investigation, the organization can assign only `DocumentDB.MCP.Read` to that user and require the `prod-read` connection profile.
+
+In this scenario:
+
+- The user can ask the agent to inspect collections, sample documents, count records, or run bounded queries.
+- If the agent misunderstands a prompt such as "clean up stale vehicle records" and tries to call `delete_documents`, the call is denied because the caller does not have the MCP write role and the production profile is read-only.
+- If the agent tries a management operation such as `drop_collection`, it is also denied by MCP role checks, global capability gates, profile-level restrictions, and destructive-operation confirmation requirements.
+
+Business value: the user can keep their normal operational access outside MCP, while the AI-assisted workflow is constrained to investigation-only behavior. This reduces the chance that an ambiguous prompt turns into production data loss.
+
+#### Scenario 2: Separate Break-Glass Management Access
+
+Management tools such as `drop_database`, `drop_collection`, `create_index`, and `drop_index` are higher-risk than ordinary reads or document writes. Even if some operators are trusted administrators, the MCP server can require a separate `DocumentDB.MCP.Management` role and explicit enablement through `ENABLE_MANAGEMENT_TOOLS=true`.
+
+In this scenario:
+
+- Day-to-day users receive read or write roles, but not management.
+- A small operator group receives management only for planned maintenance or break-glass workflows.
+- Destructive tools still require confirmation parameters such as `confirm_db_name`, `confirm_collection_name`, or `confirm_index_name`.
+
+Business value: management operations are separated from normal AI-assisted usage, making high-impact actions more intentional, auditable, and easier to govern.
+
+#### Scenario 3: Multiple Applications With Different Scopes
+
+One MCP server instance can serve multiple applications or workflows on the same machine by using different connection profiles. For example, a production support assistant can use `prod-read`, while a validation assistant uses `sandbox-write`.
+
+In this scenario:
+
+- The support assistant can query production data but cannot mutate it.
+- The validation assistant can insert or update sandbox data but cannot access production collections.
+- The same tool name, such as `find_documents` or `insert_documents`, is evaluated against the selected `connection_profile` on every call.
+
+Business value: teams do not need to run a separate MCP server for every workflow just to enforce different scopes. The profile layer provides task-specific isolation on top of global server configuration.
+
+#### Scenario 4: Local Development Auth Bypass
+
+There are development-only configuration knobs that reduce endpoint authentication requirements:
+
+```env
+AUTH_REQUIRED=false
+```
+
+or, for trusted local stdio usage:
+
+```env
+TRANSPORT=stdio
+ALLOW_UNAUTHENTICATED_STDIO=true
+```
+
+These settings are intended for local development, demos, or trusted single-user desktop usage. They bypass endpoint authentication and MCP token-role authorization, but they do not bypass the full server-side safety model. The server still requires `connection_profile`, still applies global capability flags such as `ENABLE_WRITE_TOOLS` and `ENABLE_MANAGEMENT_TOOLS`, still enforces profile-level restrictions, and still applies tool-specific safety controls.
+
+Business value: developers can run simple local demos without setting up Entra end to end, while production-style deployments keep Entra authentication and role assignment enabled.
 
 ## 4. Usage Flow
 
@@ -424,3 +495,4 @@ Write example, requiring `ENABLE_WRITE_TOOLS=true`, a caller with write role, an
 ### Step 9: Monitor Audit Logs
 
 Watch stderr or centralized logs for `[MCP-AUDIT]` events. These records show which tool was invoked, whether it was allowed or denied, which profile was used, and which caller identity was attached to the request.
+
