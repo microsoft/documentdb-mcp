@@ -63,14 +63,6 @@ export interface ConnectionProfileConfig {
      *   - `deniedCollections[db]` is `[...]` → listed collections are denied even if otherwise allowed
      */
     deniedCollections?: Record<string, string[]>;
-    /**
-     * Optional per-profile read-only switch. When `true`, the effective allowed tiers are forced
-     * to `["read"]` regardless of `allowedRoles`. Acts as a one-line operator kill-switch on top
-     * of `allowedRoles`; never broadens what `allowedRoles` permits.
-     *   - omitted / `false` → no effect (allowedRoles applies as-is)
-     *   - `true`            → only `read` tier permitted; `write` and `management` denied
-     */
-    readOnly?: boolean;
 }
 
 export interface MCPConfig {

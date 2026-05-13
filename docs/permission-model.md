@@ -143,12 +143,12 @@ Not strictly a permission check, but the resolution can fail (unknown profile na
 | Aspect | Detail |
 |---|---|
 | Where | [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) |
-| Inputs | `allowedRoles` and `readOnly` on the resolved profile |
-| Default | omitted → effective `["read"]` (**read-only by default**); `[]` → **explicit deny-all** (no tiers, profile unusable); `[...]` → exactly those tiers; `readOnly: true` → effective set is intersected with `["read"]` |
+| Inputs | `allowedRoles` on the resolved profile |
+| Default | omitted → effective `["read"]` (**read-only by default**); `[]` → **explicit deny-all** (no tiers, profile unusable); `[...]` → exactly those tiers |
 | Effect | Narrows what the *profile* permits; cannot broaden the global flag or the caller's role |
-| On deny | "Tool tier 'write' is not allowed for connection profile 'dev'. Allowed tiers: read." (or `(none)` for `[]`); when `readOnly:true` the message also notes "Profile is configured as readOnly." |
+| On deny | "Tool tier 'write' is not allowed for connection profile 'dev'. Allowed tiers: read." (or `(none)` for `[]`) |
 
-This is the **profile-side ceiling**: even when the global flag is on and the caller has the role, a profile that doesn't list the tier rejects the call. `readOnly: true` is a one-line operator switch that forces the effective tier set to `["read"]` regardless of `allowedRoles` (it can never broaden). See [release-readiness-check.md](./release-readiness-check.md) §4.
+This is the **profile-side ceiling**: even when the global flag is on and the caller has the role, a profile that doesn't list the tier rejects the call. See [release-readiness-check.md](./release-readiness-check.md) §4.
 
 ### [9] Profile resource scope — `assertResourceAllowed`
 
@@ -234,7 +234,6 @@ Within a single layer, the rule for combinations is:
 
 - **Uniform field semantics across `allowedRoles` / `allowedDatabases` / `allowedCollections[db]`:** `undefined` → documented default; `[...]` → narrow to listed; `[]` → **explicit deny-all** (lock-to-nothing). The deny-all case is rare in practice but lets operators express "this profile sees nothing" without inventing a sentinel.
 - **Denylist precedence:** `deniedDatabases` / `deniedCollections[db]` are deny-wins overlays on top of the corresponding allowlist. They are checked *before* the allowlist, so an entry listed in both is denied.
-- **`readOnly` precedence:** `readOnly: true` is intersected with `allowedRoles` after the omitted-default is applied. It can only ever narrow; it never broadens what `allowedRoles` permits.
 - **Profile resource scope (`assertResourceAllowed`):** an undefined `allowedDatabases` / `allowedCollections[db]` is unrestricted; `[]` is explicit deny-all; per-collection check only runs once the database itself passes.
 
 ## What the model does *not* yet cover

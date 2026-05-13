@@ -174,18 +174,14 @@ export function assertProfileCapabilityAllowed(profileName: string, requiredRole
         return;
     }
 
-    const { allowedRoles, readOnly } = profile;
-    const baseRoles: ToolRole[] = allowedRoles === undefined ? ['read'] : allowedRoles;
-    // readOnly=true forces the effective set to the intersection with ['read'].
-    // It can never broaden what allowedRoles permits.
-    const effectiveRoles: ToolRole[] = readOnly === true ? baseRoles.filter((r) => r === 'read') : baseRoles;
+    const { allowedRoles } = profile;
+    const effectiveRoles: ToolRole[] = allowedRoles === undefined ? ['read'] : allowedRoles;
 
     if (!effectiveRoles.includes(requiredRole)) {
         const allowedList = effectiveRoles.length > 0 ? effectiveRoles.join(', ') : '(none)';
-        const readOnlySuffix = readOnly === true && requiredRole !== 'read' ? " Profile is configured as readOnly." : '';
         throw new Error(
             `Tool tier '${requiredRole}' is not allowed for connection profile '${profileName}'. ` +
-                `Allowed tiers: ${allowedList}.${readOnlySuffix}`,
+                `Allowed tiers: ${allowedList}.`,
         );
     }
 }

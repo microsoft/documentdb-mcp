@@ -986,47 +986,6 @@ describe('registered DocumentDB tools — per-profile resource denylists (deny w
     });
 });
 
-describe('registered DocumentDB tools — readOnly profile flag', () => {
-    afterEach(() => {
-        process.env = { ...originalEnv };
-        vi.restoreAllMocks();
-        vi.resetModules();
-    });
-
-    it('readOnly:true denies write tools even when allowedRoles includes write', async () => {
-        const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"readOnly":true}}';
-        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
-
-        const result = await tools.insert_documents.handler({
-            connection_profile: 'dev',
-            db_name: 'fleet',
-            collection_name: 'vehicles',
-            documents: [{ x: 1 }],
-        });
-
-        expect(result.isError).toBe(true);
-        expect(result.content[0].text).toMatch(/Tool tier 'write' is not allowed.*readOnly/);
-        expect(collection.insertOne).not.toHaveBeenCalled();
-    });
-
-    it('readOnly:true still permits read tools', async () => {
-        const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"readOnly":true}}';
-        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
-
-        const result = await tools.find_documents.handler({
-            connection_profile: 'dev',
-            db_name: 'fleet',
-            collection_name: 'vehicles',
-            query: {},
-        });
-
-        expect(result.isError).toBeUndefined();
-        expect(collection.find).toHaveBeenCalled();
-    });
-});
-
 describe('registered DocumentDB tools — pipeline namespace enforcement', () => {
     afterEach(() => {
         process.env = { ...originalEnv };

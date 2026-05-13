@@ -141,20 +141,6 @@ await check(
 );
 
 await check(
-    '7d.4 readOnly:true denies write tools regardless of allowedRoles',
-    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"readOnly":true}}' },
-    { name: 'insert_documents', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', documents: [{ x: 1 }] } },
-    ({ isError, text }) => (isError && /Tool tier 'write' is not allowed.*Profile is configured as readOnly\./.test(text)) || `expected readOnly deny on write`,
-);
-
-await check(
-    '7d.5 readOnly:true denies management tools',
-    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"readOnly":true}}' },
-    { name: 'drop_collection', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', confirm_collection_name: 'vehicles' } },
-    ({ isError, text }) => (isError && /Tool tier 'management' is not allowed.*Profile is configured as readOnly\./.test(text)) || `expected readOnly deny on management`,
-);
-
-await check(
     '7d.6 pipeline $lookup.from is gated by collection allowlist',
     { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}' },
     { name: 'aggregate', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', pipeline: [{ $lookup: { from: 'audit_log', localField: 'id', foreignField: 'vid', as: 'a' } }] } },

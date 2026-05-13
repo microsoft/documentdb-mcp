@@ -167,13 +167,12 @@ Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guid
 
 Customers should be able to precisely control what data the MCP server can expose, beyond coarse read/write/management roles. The current model gates by tool category, but customers want to gate by data scope as well.
 
-The three controls in this section are **shipped**. Additional fine-grained controls are tracked separately in [section 4b](#4b-additional-fine-grained-data-exposure-controls--future).
+The two controls in this section are **shipped**. A `readOnly` profile flag was considered but dropped as redundant: omitting `allowedRoles` already defaults the profile to `["read"]`, so authoring `allowedRoles: ["read"]` (or omitting it) provides the same enforcement without introducing a second knob to reason about. Additional fine-grained controls are tracked separately in [section 4b](#4b-additional-fine-grained-data-exposure-controls--future).
 
 **Shipped:**
 
 - **Pipeline namespace enforcement — DONE.** `assertPipelineNamespacesAllowed` ([src/tools/utils/pipelineNamespaces.ts](../src/tools/utils/pipelineNamespaces.ts)) recursively walks every aggregation pipeline submitted to `aggregate` or `explain_operation` and applies the per-profile resource scope (section 3) to every namespace referenced via `$lookup.from` (string and `{db, coll}` form, plus nested `pipeline`), `$unionWith`, `$graphLookup.from`, `$merge.into`, `$out`, and `$facet` sub-pipelines. Closes the cross-namespace read path that the top-level `db_name` / `collection_name` check missed. Tests: [test/tools/pipelineNamespaces.test.ts](../test/tools/pipelineNamespaces.test.ts) (15 helper tests) and 5 wiring tests in [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts).
 - **Denied databases / collections (deny-wins blocklists) — DONE.** Symmetric to `allowedDatabases` / `allowedCollections`. Profile fields `deniedDatabases: string[]` and `deniedCollections: Record<db, string[]>` are checked *before* the allowlist, so deny always wins. Empty / omitted = no extra denials. `list_databases` honors the denylist when filtering its response. Implementation in [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) and [src/tools/database-tools.ts](../src/tools/database-tools.ts).
-- **`readOnly` profile flag — DONE.** Single boolean on the profile. When `true`, the effective allowed tier set is intersected with `["read"]` regardless of `allowedRoles`, so write/management calls are denied with an actionable message that names the profile and notes "Profile is configured as readOnly." The flag can only narrow; it never broadens what `allowedRoles` permits. Implementation in [src/security/connectionProfiles.ts](../src/security/connectionProfiles.ts) (`assertProfileCapabilityAllowed`).
 
 Updated profile fields:
 
@@ -181,13 +180,12 @@ Updated profile fields:
 |---|---|---|
 | `deniedDatabases` | `string[]` | Listed = those databases are denied even if otherwise allowed; omitted/`[]` = no extra denials. Deny wins. |
 | `deniedCollections` | `Record<db, string[]>` | Per-database collection blocklist. `deniedCollections[db]` listed = those collections denied; omitted/`[]` = no extra denials in that db. Deny wins. |
-| `readOnly` | `boolean` | `true` forces effective tiers to `["read"]` (intersected with `allowedRoles`); omitted / `false` = no effect. |
 
 The goal is to let a customer safely expose a narrow, audited slice of their data through MCP without depending only on caller role claims. Defaults remain restrictive, and any rule violations fail closed with a clear error.
 
 ### 4b. Additional Fine-Grained Data Exposure Controls — FUTURE
 
-Deferred fine-grained controls. None of these are blockers for the initial release; the shipped 4a controls (resource scope, denylists, `readOnly`, pipeline namespace enforcement) cover the highest-risk data-exposure paths. Each item below is independent design + implementation work and can be picked up in a later release.
+Deferred fine-grained controls. None of these are blockers for the initial release; the shipped 4a controls (resource scope, denylists, pipeline namespace enforcement) cover the highest-risk data-exposure paths. Each item below is independent design + implementation work and can be picked up in a later release.
 
 - Per-collection capability overrides (for example, `vehicles` is read-only even for write-capable callers)
 - Field-level projection allowlist or denylist, so sensitive fields like `ssn`, `email`, or `password_hash` are never returned
@@ -204,7 +202,7 @@ Example profile shape (combining what is shipped today with what is still planne
     "authMode": "entra",
     "endpoint": "prod.mongocluster.cosmos.azure.com",
     "tokenScope": "https://ossrdbms-aad.database.windows.net/.default",
-    "readOnly": true,
+    "allowedRoles": ["read"],
     "allowedDatabases": ["fleet"],
     "allowedCollections": { "fleet": ["vehicles"] },
     "deniedCollections": { "fleet": ["audit_log"] },
@@ -215,7 +213,7 @@ Example profile shape (combining what is shipped today with what is still planne
 }
 ```
 
-(`readOnly`, `allowedDatabases`, `allowedCollections`, `deniedCollections` are enforced today; `deniedFields`, `requiredFilter`, and `maxResultDocuments` are illustrative of the 4b future direction.)
+(`allowedRoles`, `allowedDatabases`, `allowedCollections`, `deniedCollections` are enforced today; `deniedFields`, `requiredFilter`, and `maxResultDocuments` are illustrative of the 4b future direction.)
 
 ### 5. Full-Collection Operation Protection
 

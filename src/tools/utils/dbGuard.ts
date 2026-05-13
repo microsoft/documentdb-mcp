@@ -45,7 +45,7 @@ export function withDbGuard<Inp extends SecureToolInput>(
             assertCapabilityEnabled(policy.requiredRole);
             assertAuthorized(policy.requiredRole);
             const connection = resolveConnectionProfile(input.connection_profile);
-            // Enforce per-profile capability tier (allowedRoles, readOnly).
+            // Enforce per-profile capability tier (allowedRoles).
             // Profiles with no role/capability config pass through unchanged.
             assertProfileCapabilityAllowed(input.connection_profile, policy.requiredRole);
             // Enforce per-profile database/collection allow+deny lists for the source resource
