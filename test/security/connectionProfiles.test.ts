@@ -254,3 +254,76 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
         expect(() => assertProfileCapabilityAllowed('missing', 'management')).not.toThrow();
     });
 });
+
+describe('connectionProfiles — per-profile resource denylists (deny wins)', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+    });
+
+    it('rejects a database listed in deniedDatabases', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","deniedDatabases":["secrets"]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(
+            /Database 'secrets' is denied for connection profile 'dev'\./,
+        );
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
+    });
+
+    it('denylist wins over allowlist when both list the same database', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet","secrets"],"deniedDatabases":["secrets"]}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
+        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(
+            /Database 'secrets' is denied/,
+        );
+    });
+
+    it('rejects a collection listed in deniedCollections[db]', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","deniedCollections":{"fleet":["audit_log"]}}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'audit_log' })).toThrow(
+            /Collection 'fleet\.audit_log' is denied for connection profile 'dev'\./,
+        );
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).not.toThrow();
+    });
+
+    it('collection denylist wins over collection allowlist', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","allowedCollections":{"fleet":["vehicles","audit_log"]},"deniedCollections":{"fleet":["audit_log"]}}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).not.toThrow();
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'audit_log' })).toThrow(
+            /Collection 'fleet\.audit_log' is denied/,
+        );
+    });
+
+    it('empty denylists are no-ops', async () => {
+        const { assertResourceAllowed } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","deniedDatabases":[],"deniedCollections":{"fleet":[]}}}',
+        );
+
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).not.toThrow();
+    });
+
+    it('exposes denylists via getProfileScope', async () => {
+        const { getProfileScope } = await loadProfiles(
+            '{"dev":{"uri":"mongodb://fake","deniedDatabases":["secrets"],"deniedCollections":{"fleet":["audit_log"]}}}',
+        );
+
+        expect(getProfileScope('dev')).toEqual({
+            allowedDatabases: undefined,
+            allowedCollections: undefined,
+            deniedDatabases: ['secrets'],
+            deniedCollections: { fleet: ['audit_log'] },
+        });
+    });
+});

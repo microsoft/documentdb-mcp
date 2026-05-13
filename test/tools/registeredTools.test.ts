@@ -926,3 +926,161 @@ describe('registered DocumentDB tools — per-profile capability tier restrictio
         expect(collection.find).not.toHaveBeenCalled();
     });
 });
+
+describe('registered DocumentDB tools — per-profile resource denylists (deny wins)', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    it('rejects a tool call targeting a denied database', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedDatabases":["secrets"]}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.find_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'secrets',
+            collection_name: 'passwords',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Database 'secrets' is denied for connection profile 'dev'\./);
+        expect(collection.find).not.toHaveBeenCalled();
+    });
+
+    it('rejects a tool call targeting a denied collection', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.count_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'audit_log',
+            query: {},
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Collection 'fleet\.audit_log' is denied for connection profile 'dev'\./);
+        expect(collection.countDocuments).not.toHaveBeenCalled();
+    });
+
+    it('list_databases hides a denied database from the response', async () => {
+        const profiles = '{"dev":{"uri":"mongodb://fake","deniedDatabases":["secrets"]}}';
+        const { tools, database } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+        (database as any).admin = () => ({
+            listDatabases: vi.fn(async () => ({
+                databases: [
+                    { name: 'fleet', sizeOnDisk: 1, empty: false },
+                    { name: 'secrets', sizeOnDisk: 2, empty: false },
+                ],
+            })),
+        });
+
+        const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
+
+        expect(response.databases.map((d: any) => d.name)).toEqual(['fleet']);
+    });
+});
+
+describe('registered DocumentDB tools — pipeline namespace enforcement', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    it('aggregate rejects a pipeline whose $lookup.from is outside the collection allowlist', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.aggregate.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            pipeline: [{ $lookup: { from: 'audit_log', as: 'a' } }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /Aggregation stage \$lookup references fleet\.audit_log:.*Collection 'fleet\.audit_log' is not allowed/,
+        );
+        expect(collection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('aggregate rejects a $unionWith targeting a denied collection', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.aggregate.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            pipeline: [{ $unionWith: 'audit_log' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /Aggregation stage \$unionWith references fleet\.audit_log:.*denied/,
+        );
+        expect(collection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('aggregate rejects a cross-database $lookup when target db is not allowed', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"]}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.aggregate.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            pipeline: [{ $lookup: { from: { db: 'secrets', coll: 'passwords' }, as: 'p' } }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /Aggregation stage \$lookup references secrets\.passwords:.*Database 'secrets' is not allowed/,
+        );
+        expect(collection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('aggregate allows a pipeline whose namespaces are all in scope', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}';
+        const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.aggregate.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            pipeline: [{ $lookup: { from: 'maintenance', as: 'm' } }, { $match: { status: 'active' } }],
+        });
+
+        expect(result.isError).toBeUndefined();
+        expect(collection.aggregate).toHaveBeenCalled();
+    });
+
+    it('explain_operation also walks pipeline namespaces for operation=aggregate', async () => {
+        const profiles =
+            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+        const { tools, database } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
+
+        const result = await tools.explain_operation.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            operation: 'aggregate',
+            pipeline: [{ $lookup: { from: 'leaks', as: 'l' } }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(/Aggregation stage \$lookup references fleet\.leaks/);
+        expect(database.command).not.toHaveBeenCalled();
+    });
+});

@@ -31,9 +31,16 @@ export function registerDatabaseTools(server: McpServer): void {
         withDbGuard({ toolName: 'list_databases', requiredRole: 'read' }, async ({ connection_profile, db_name }, client) => {
             const scope = getProfileScope(connection_profile);
             const allowedDbs = scope.allowedDatabases;
+            const deniedDbs = scope.deniedDatabases;
             // Field semantics: undefined = unrestricted, [] = explicit deny-all, [...] = narrow to listed.
-            const dbAllowed = (name: string) => allowedDbs === undefined || allowedDbs.includes(name);
+            // Denylist wins over allowlist.
+            const dbAllowed = (name: string) => {
+                if (deniedDbs && deniedDbs.includes(name)) return false;
+                return allowedDbs === undefined || allowedDbs.includes(name);
+            };
             const collectionAllowed = (db: string, collectionName: string) => {
+                const deniedPerDb = scope.deniedCollections?.[db];
+                if (deniedPerDb && deniedPerDb.includes(collectionName)) return false;
                 const perDb = scope.allowedCollections?.[db];
                 return perDb === undefined || perDb.includes(collectionName);
             };

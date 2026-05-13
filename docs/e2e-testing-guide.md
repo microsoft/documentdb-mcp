@@ -301,6 +301,20 @@ The semantics for `allowedRoles` are uniform with `allowedDatabases` / `allowedC
 
 If any of the above does not behave as expected, the per-profile capability gate is not wired and must be fixed before release.
 
+## 7d. Fine-Grained Data Exposure Controls Verification
+
+These checks cover the controls implemented under [release-readiness-check.md](./release-readiness-check.md) §4a: pipeline namespace enforcement and denied database/collection blocklists. Each check restarts the server with the JSON shown, then exercises the named tool. Restore the default profile JSON between checks.
+
+1. **Denied database wins over allowlist.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowedDatabases":["fleet","secrets"],"deniedDatabases":["secrets"]}}'`. Call `find_documents` with `db_name="secrets"`. Expect `isError: true` with `Database 'secrets' is denied for connection profile 'dev'.`. Then call `find_documents` with `db_name="fleet"` and expect normal success.
+2. **Denied collection wins over allowlist.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowedCollections":{"fleet":["vehicles","audit_log"]},"deniedCollections":{"fleet":["audit_log"]}}}'`. Call `find_documents` on `fleet.audit_log`. Expect `isError: true` with `Collection 'fleet.audit_log' is denied`. Then call `find_documents` on `fleet.vehicles` and expect normal success.
+3. **`list_databases` hides denied databases.** Use `'{"dev":{"uri":"mongodb://...","deniedDatabases":["secrets"]}}'`. Call `list_databases` with no `db_name`. Expect the response `databases` array to not contain `secrets` even if the cluster has that database.
+4. **Pipeline `$lookup.from` is gated by the collection allowlist.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}'`. Call `aggregate` on `fleet.vehicles` with `pipeline=[{"$lookup":{"from":"audit_log","localField":"id","foreignField":"vid","as":"a"}}]`. Expect `isError: true` with `Aggregation stage $lookup references fleet.audit_log: Collection 'fleet.audit_log' is not allowed`.
+5. **Pipeline `$unionWith` is gated by the denylist.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}'`. Call `aggregate` on `fleet.vehicles` with `pipeline=[{"$unionWith":"audit_log"}]`. Expect `isError: true` with `Aggregation stage $unionWith references fleet.audit_log: Collection 'fleet.audit_log' is denied`.
+6. **Cross-database `$lookup` is gated.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"]}}'`. Call `aggregate` on `fleet.vehicles` with `pipeline=[{"$lookup":{"from":{"db":"secrets","coll":"passwords"},"as":"p"}}]`. Expect `isError: true` with `Aggregation stage $lookup references secrets.passwords: Database 'secrets' is not allowed`.
+7. **`explain_operation` (`operation=aggregate`) is gated.** With the profile from step 4, call `explain_operation` with `operation="aggregate"` and `pipeline=[{"$lookup":{"from":"audit_log","as":"a"}}]`. Expect `isError: true` with the same `Aggregation stage $lookup` message.
+
+If any of the above does not behave as expected, the §4a controls are not wired and must be fixed before release.
+
 ## 8. Cleanup
 
 Stop and remove the local backend:
