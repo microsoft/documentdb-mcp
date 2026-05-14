@@ -315,6 +315,17 @@ These checks cover the controls implemented under [release-readiness-check.md](.
 
 If any of the above does not behave as expected, the §4a controls are not wired and must be fixed before release.
 
+## 7e. Full-Collection Operation Protection Verification
+
+These checks cover [release-readiness-check.md](./release-readiness-check.md) §5: `update_documents` and `delete_documents` reject `multi=true` with an empty filter unless `confirm_full_collection_operation=true`. Use a profile that grants `write` (and `read` so you can observe state), e.g. `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write"]}}'`.
+
+1. **Delete with multi+empty filter is rejected.** Call `delete_documents` with `db_name="fleet"`, `collection_name="vehicles"`, `filter={}`, `multi=true`, and **no** `confirm_full_collection_operation`. Expect `isError: true` with `delete_documents with multi=true and an empty filter targets every document in the collection. Set confirm_full_collection_operation=true to proceed, or narrow the filter.`. Verify the collection count is unchanged.
+2. **Update with multi+empty filter is rejected.** Call `update_documents` with `db_name="fleet"`, `collection_name="vehicles"`, `filter={}`, `update={"$set":{"touched":true}}`, `multi=true`, and **no** confirm flag. Expect `isError: true` with the same shape of message but `update_documents` as the prefix. Verify no documents were modified.
+3. **Single-document writes are unaffected by an empty filter.** Call `update_documents` with `filter={}`, `multi=false`, `update={"$set":{"touched":true}}`. This must proceed (it acts like `updateOne` and only mutates one document). Same for `delete_documents` with `multi=false`.
+4. **Confirm flag allows the full-collection op.** Repeat step 1 but add `confirm_full_collection_operation=true`. Expect a normal success response (and the collection count now drops to 0 — only run against a marker collection you can repopulate).
+
+If any of the above does not behave as expected, the §5 control is not wired and must be fixed before release.
+
 ## 8. Cleanup
 
 Stop and remove the local backend:

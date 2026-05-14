@@ -22,6 +22,16 @@ export interface SecureToolInput {
      * Other tools may leave this undefined.
      */
     operation?: string;
+    /**
+     * Filter for `update_documents` / `delete_documents`. When the tool is one of those two and
+     * `multi === true`, `withDbGuard` runs `assertFullCollectionOpAllowed` before opening the
+     * backend connection. Other tools leave this undefined.
+     */
+    filter?: unknown;
+    /** Multi flag for `update_documents` / `delete_documents`. */
+    multi?: unknown;
+    /** Explicit opt-in to a full-collection (multi=true + empty filter) write or delete. */
+    confirm_full_collection_operation?: unknown;
 }
 
 export interface ToolSecurityPolicy {

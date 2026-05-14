@@ -4,6 +4,7 @@ import { auditToolInvocation } from '../../security/audit';
 import { assertAuthorized, assertCapabilityEnabled } from '../../security/authorization';
 import { assertProfileCapabilityAllowed, assertResourceAllowed, resolveConnectionProfile } from '../../security/connectionProfiles';
 import { assertPipelineNamespacesAllowed } from './pipelineNamespaces';
+import { assertFullCollectionOpAllowed } from './fullCollectionGuard';
 import { type SecureToolInput, type ToolSecurityPolicy } from './toolSecurity';
 
 function normalizePipeline(raw: unknown): unknown {
@@ -17,6 +18,28 @@ function normalizePipeline(raw: unknown): unknown {
         }
     }
     return undefined;
+}
+
+function normalizeFilter(raw: unknown): unknown {
+    if (raw === undefined) return undefined;
+    if (typeof raw === 'string') {
+        if (raw.trim().length === 0) return undefined;
+        try {
+            return JSON.parse(raw);
+        } catch {
+            // Defer to the in-handler parser to surface a clear parse error; full-collection guard no-ops.
+            return undefined;
+        }
+    }
+    return raw;
+}
+
+function normalizeBoolean(raw: unknown): unknown {
+    if (typeof raw === 'string') {
+        if (raw === 'true') return true;
+        if (raw === 'false') return false;
+    }
+    return raw;
 }
 
 export function withDbGuard<Inp extends SecureToolInput>(
@@ -68,6 +91,22 @@ export function withDbGuard<Inp extends SecureToolInput>(
                 const normalized = normalizePipeline(input.pipeline);
                 if (normalized !== undefined) {
                     assertPipelineNamespacesAllowed(input.connection_profile, input.db_name, normalized);
+                }
+            }
+            // Reject full-collection writes/deletes (multi=true + empty filter) unless the caller
+            // opted in via confirm_full_collection_operation=true. Runs pre-connection so denies fail
+            // fast. Only applies to update_documents and delete_documents.
+            if (policy.toolName === 'update_documents' || policy.toolName === 'delete_documents') {
+                const normalizedFilter = normalizeFilter(input.filter);
+                const normalizedMulti = normalizeBoolean(input.multi);
+                const normalizedConfirm = normalizeBoolean(input.confirm_full_collection_operation);
+                if (normalizedFilter !== undefined) {
+                    assertFullCollectionOpAllowed(
+                        policy.toolName,
+                        normalizedFilter,
+                        normalizedMulti,
+                        normalizedConfirm,
+                    );
                 }
             }
             authorized = true;

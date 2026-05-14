@@ -1084,3 +1084,95 @@ describe('registered DocumentDB tools — pipeline namespace enforcement', () =>
         expect(database.command).not.toHaveBeenCalled();
     });
 });
+
+describe('registered DocumentDB tools — full-collection operation protection', () => {
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+        vi.resetModules();
+    });
+
+    it('delete_documents with multi=true and empty filter is rejected without confirm flag', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const result = await tools.delete_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            filter: {},
+            multi: true,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /delete_documents with multi=true and an empty filter.*confirm_full_collection_operation=true/,
+        );
+        expect(collection.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('delete_documents with multi=true and empty filter proceeds when confirm_full_collection_operation=true', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const result = await tools.delete_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            filter: {},
+            multi: true,
+            confirm_full_collection_operation: true,
+        });
+
+        expect(result.isError).toBeUndefined();
+        expect(collection.deleteMany).toHaveBeenCalledWith({});
+    });
+
+    it('update_documents with multi=true and empty filter is rejected without confirm flag', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const result = await tools.update_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            filter: {},
+            update: { $set: { archived: true } },
+            multi: true,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toMatch(
+            /update_documents with multi=true and an empty filter.*confirm_full_collection_operation=true/,
+        );
+        expect(collection.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('update_documents with non-empty filter proceeds without confirm flag (multi=true)', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const result = await tools.update_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            filter: { status: 'inactive' },
+            update: { $set: { archived: true } },
+            multi: true,
+        });
+
+        expect(result.isError).toBeUndefined();
+        expect(collection.updateMany).toHaveBeenCalled();
+    });
+
+    it('delete_documents with multi=false and empty filter proceeds without confirm flag', async () => {
+        const { tools, collection } = await setupRegisteredTools();
+
+        const result = await tools.delete_documents.handler({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            filter: {},
+            multi: false,
+        });
+
+        expect(result.isError).toBeUndefined();
+        expect(collection.deleteOne).toHaveBeenCalledWith({});
+    });
+});

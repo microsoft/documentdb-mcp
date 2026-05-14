@@ -174,6 +174,7 @@ For `aggregate` and `explain_operation` (`operation=aggregate`), this gate is al
 | `assertBatchSizeWithinLimit` | `insert_documents` | Array length ≤ `MAX_INSERT_BATCH_SIZE` |
 | `assertAggregatePipelineIsReadOnly` | `aggregate`, `explain_operation` | Rejects `$out` / `$merge` unless `ALLOW_AGGREGATE_WRITE_STAGES=true` |
 | `assertPipelineNamespacesAllowed` | `aggregate`, `explain_operation` (`operation=aggregate`) | Recursively walks every aggregation pipeline (`$lookup`, `$unionWith`, `$graphLookup`, `$merge`, `$out`, `$facet` sub-pipelines) and applies gate [9] to every referenced namespace. Closes the pipeline-internal cross-namespace path. |
+| `assertFullCollectionOpAllowed` | `update_documents`, `delete_documents` | Rejects `multi=true` with an empty filter (`{}`) unless `confirm_full_collection_operation=true`. Runs in `withDbGuard` pre-connection. |
 | `clampPositiveInt` | `find_documents`, `sample_documents`, `explain_operation` (find branch) | Caps `limit` / `sample_size` at configured maxima |
 | `maxTimeMSOption` | every read query | Adds `maxTimeMS` to backend operations to prevent runaway queries |
 

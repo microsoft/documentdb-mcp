@@ -168,6 +168,22 @@ await check(
     ({ isError, text }) => (isError && /Aggregation stage \$lookup references fleet\.audit_log/.test(text)) || `expected explain pipeline deny`,
 );
 
+console.log('\n## Section 7e — Full-Collection Operation Protection\n');
+
+await check(
+    '7e.1 delete_documents multi=true with empty filter is rejected without confirm flag',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"]}}' },
+    { name: 'delete_documents', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', filter: {}, multi: true } },
+    ({ isError, text }) => (isError && /delete_documents with multi=true and an empty filter.*confirm_full_collection_operation=true/.test(text)) || `expected full-collection delete deny`,
+);
+
+await check(
+    '7e.2 update_documents multi=true with empty filter is rejected without confirm flag',
+    { ...baseEnv, CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"]}}' },
+    { name: 'update_documents', arguments: { connection_profile: 'dev', db_name: 'fleet', collection_name: 'vehicles', filter: {}, update: { $set: { archived: true } }, multi: true } },
+    ({ isError, text }) => (isError && /update_documents with multi=true and an empty filter.*confirm_full_collection_operation=true/.test(text)) || `expected full-collection update deny`,
+);
+
 console.log('\n## Bonus stdio gates (sanity)\n');
 
 await check(
