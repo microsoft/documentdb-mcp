@@ -14,10 +14,7 @@ import { config } from './config';
 import { getRequestPrincipal, requireHttpAuthentication } from './security/auth';
 import { createRateLimitMiddleware } from './security/rateLimit';
 import { runWithRequestContext } from './security/requestContext';
-import { registerCollectionTools } from './tools/collection-tools';
-import { registerDatabaseTools } from './tools/database-tools';
-import { registerDocumentTools } from './tools/document-tools';
-import { registerIndexTools } from './tools/index-tools';
+import { registerAllTools } from './tools';
 
 export function createServer(): McpServer {
     const server = new McpServer({
@@ -25,10 +22,10 @@ export function createServer(): McpServer {
         version: '0.1.0',
     });
 
-    registerDatabaseTools(server);
-    registerCollectionTools(server);
-    registerDocumentTools(server);
-    registerIndexTools(server);
+    // All MCP tools live in `src/tools` as declarative `ToolDefinition` entries.
+    // Add a new tool by appending its definition to `allToolDefinitions` — no
+    // changes here are required.
+    registerAllTools(server);
 
     return server;
 }
