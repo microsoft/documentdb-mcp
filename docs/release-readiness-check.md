@@ -215,21 +215,35 @@ Example profile shape (combining what is shipped today with what is still planne
 
 (`allowedRoles`, `allowedDatabases`, `allowedCollections`, `deniedCollections` are enforced today; `deniedFields`, `requiredFilter`, and `maxResultDocuments` are illustrative of the 4b future direction.)
 
-### 5. Full-Collection Operation Protection
+### 5. Full-Collection Operation Protection — DONE
 
-Block broad write operations by default, especially empty filters with multi-document writes or deletes.
+`update_documents` and `delete_documents` reject calls that would touch every document in the collection unless the caller explicitly opts in. The trigger is **`multi: true` AND an empty filter (`{}`)**; single-document operations (`multi !== true`) are unaffected even with an empty filter.
 
-Example confirmation pattern:
+New tool input field on both tools:
+
+| Field | Type | Default | Behavior |
+|---|---|---|---|
+| `confirm_full_collection_operation` | `boolean` | `false` | Required to be `true` when `multi=true` and `filter={}`. Without it, the call is rejected with an actionable message before any backend connection is opened. |
+
+Deny example payload (rejected):
 
 ```json
-{
-  "filter": {},
-  "multi": true,
-  "confirm_full_collection_operation": true
-}
+{ "connection_profile": "sandbox", "db_name": "fleet", "collection_name": "vehicles", "filter": {}, "multi": true }
 ```
 
-Default behavior should reject full-collection updates/deletes unless the customer explicitly opts in.
+Allow example payload (proceeds):
+
+```json
+{ "connection_profile": "sandbox", "db_name": "fleet", "collection_name": "vehicles", "filter": {}, "multi": true, "confirm_full_collection_operation": true }
+```
+
+Enforcement runs in `withDbGuard` **before** the Mongo connection is opened, so denials fail fast with no connect timeout. Implementation in [src/tools/utils/fullCollectionGuard.ts](../src/tools/utils/fullCollectionGuard.ts), wired via [src/tools/utils/dbGuard.ts](../src/tools/utils/dbGuard.ts).
+
+Tests:
+- [test/tools/fullCollectionGuard.test.ts](../test/tools/fullCollectionGuard.test.ts) — 7 helper-level tests covering deny / allow with confirm / non-empty filter / multi=false / non-`true` confirm values
+- [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — 5 wiring tests covering `delete_documents` and `update_documents` deny + allow paths
+
+Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
 ### 6. Startup Configuration Validation
 

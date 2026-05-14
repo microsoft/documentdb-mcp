@@ -213,17 +213,43 @@ export function registerDocumentTools(server: McpServer): void {
                     .union([z.boolean(), z.string()])
                     .default(false)
                     .describe('When true, update all matching documents'),
+                confirm_full_collection_operation: z
+                    .union([z.boolean(), z.string()])
+                    .default(false)
+                    .describe(
+                        'Required confirmation when multi=true and filter is empty. ' +
+                            'Set true to proceed with updating every document in the collection.',
+                    ),
             },
         },
         withDbGuard(
             { toolName: 'update_documents', requiredRole: 'write' },
-            async ({ db_name, collection_name, filter, update, upsert = false, multi = false }, client) => {
+            async (
+                {
+                    db_name,
+                    collection_name,
+                    filter,
+                    update,
+                    upsert = false,
+                    multi = false,
+                    confirm_full_collection_operation = false,
+                },
+                client,
+            ) => {
                 const parsed = parseParams([
                     { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
                     { raw: update, outKey: 'update', custom: (raw) => parseUpdate(raw, { fieldName: 'update' }).value },
                     { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
                     { raw: multi, expected: 'boolean', outKey: 'multi', options: { fieldName: 'multi' } },
+                    {
+                        raw: confirm_full_collection_operation,
+                        expected: 'boolean',
+                        outKey: 'confirm_full_collection_operation',
+                        options: { fieldName: 'confirm_full_collection_operation' },
+                    },
                 ]);
+                // Full-collection write protection (multi=true + empty filter) is enforced by
+                // withDbGuard pre-connection.
                 const collection = client.db(db_name).collection(collection_name);
                 const result = parsed.multi
                     ? await collection.updateMany(parsed.filter as any, parsed.update as any, {
@@ -259,15 +285,33 @@ export function registerDocumentTools(server: McpServer): void {
                     .union([z.boolean(), z.string()])
                     .default(false)
                     .describe('When true, delete all matching documents'),
+                confirm_full_collection_operation: z
+                    .union([z.boolean(), z.string()])
+                    .default(false)
+                    .describe(
+                        'Required confirmation when multi=true and filter is empty. ' +
+                            'Set true to proceed with deleting every document in the collection.',
+                    ),
             },
         },
         withDbGuard(
             { toolName: 'delete_documents', requiredRole: 'write' },
-            async ({ db_name, collection_name, filter, multi = false }, client) => {
+            async (
+                { db_name, collection_name, filter, multi = false, confirm_full_collection_operation = false },
+                client,
+            ) => {
                 const parsed = parseParams([
                     { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
                     { raw: multi, expected: 'boolean', outKey: 'multi', options: { fieldName: 'multi' } },
+                    {
+                        raw: confirm_full_collection_operation,
+                        expected: 'boolean',
+                        outKey: 'confirm_full_collection_operation',
+                        options: { fieldName: 'confirm_full_collection_operation' },
+                    },
                 ]);
+                // Full-collection delete protection (multi=true + empty filter) is enforced by
+                // withDbGuard pre-connection.
                 const collection = client.db(db_name).collection(collection_name);
                 const result = parsed.multi
                     ? await collection.deleteMany(parsed.filter as any)
