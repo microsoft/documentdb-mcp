@@ -3,10 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+
 import { config } from '../config';
-import { withDbGuard } from './utils/dbGuard';
+import { defineTool, registerToolDefinitions, type ToolDefinition } from './registry';
 import {
     assertBatchSizeWithinLimit,
     clampPositiveInt,
@@ -15,6 +16,7 @@ import {
 } from './utils/limits';
 import { parseParams, parseUpdate } from './utils/paramParser';
 import { connectionProfileSchema } from './utils/toolSecurity';
+
 const objectOrStringSchema = z.union([z.record(z.unknown()), z.string()]);
 const aggregateWriteStages = new Set(['$out', '$merge']);
 
@@ -50,462 +52,434 @@ function normalizeFindOptions(options: Record<string, any> | undefined) {
     return findOptions;
 }
 
-export function registerDocumentTools(server: McpServer): void {
-    server.registerTool(
-        'find_documents',
-        {
-            title: 'Find Documents',
-            description:
-                'Find documents in a collection. Supports consolidated options object: limit, skip, sort, projection.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                query: objectOrStringSchema.default({}).describe('Query filter in MongoDB style'),
-                options: z
-                    .union([z.record(z.unknown()), z.string()])
-                    .optional()
-                    .describe('Consolidated options: limit (default 100), skip (default 0), sort, projection'),
-            },
+export const documentToolDefinitions: ToolDefinition[] = [
+    defineTool({
+        name: 'find_documents',
+        title: 'Find Documents',
+        description:
+            'Find documents in a collection. Supports consolidated options object: limit, skip, sort, projection.',
+        requiredRole: 'read',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            query: objectOrStringSchema.default({}).describe('Query filter in MongoDB style'),
+            options: z
+                .union([z.record(z.unknown()), z.string()])
+                .optional()
+                .describe('Consolidated options: limit (default 100), skip (default 0), sort, projection'),
         },
-        withDbGuard(
-            { toolName: 'find_documents', requiredRole: 'read' },
-            async ({ db_name, collection_name, query = {}, options }, client) => {
-                const parsed = parseParams([
-                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
-                    {
-                        raw: options,
-                        expected: 'object',
-                        outKey: 'options',
-                        options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
-                    },
-                ]);
-                const parsedQuery = parsed.query as Record<string, unknown>;
-                const rawOptions = (parsed.options || {}) as Record<string, any>;
-                const findOptions = normalizeFindOptions({ skip: 0, ...rawOptions });
-                // Clamp limit to MAX_FIND_LIMIT so a single call cannot pull millions of docs.
-                const maxLimit = config.limits.maxFindLimit;
-                findOptions.limit = clampPositiveInt(findOptions.limit, {
-                    maxValue: maxLimit,
-                    defaultValue: maxLimit,
-                    fieldName: 'options.limit',
-                });
-                const collection = client.db(db_name).collection(collection_name);
-                const documents = await collection
-                    .find(parsedQuery, { ...findOptions, ...maxTimeMSOption() })
-                    .toArray();
-                const totalCount = await collection.countDocuments(parsedQuery, maxTimeMSOption());
-                const limit = typeof findOptions.limit === 'number' ? findOptions.limit : maxLimit;
-                const skip = typeof findOptions.skip === 'number' ? findOptions.skip : 0;
-                const response = {
-                    documents,
-                    total_count: totalCount,
-                    returned_count: documents.length,
-                    has_more: skip + documents.length < totalCount,
-                    query: parsedQuery,
-                    applied_options: { ...findOptions, limit, skip },
-                };
-                return serializeResponse(response);
-            },
-        ),
-    );
-
-    server.registerTool(
-        'count_documents',
-        {
-            title: 'Count Documents',
-            description: 'Count documents in a collection matching a query',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                query: objectOrStringSchema.default({}).describe('Query filter in MongoDB style'),
-            },
-        },
-        withDbGuard(
-            { toolName: 'count_documents', requiredRole: 'read' },
-            async ({ db_name, collection_name, query = {} }, client) => {
-                const parsed = parseParams([
-                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
-                ]);
-                const parsedQuery = parsed.query as Record<string, unknown>;
-                const count = await client
-                    .db(db_name)
-                    .collection(collection_name)
-                    .countDocuments(parsedQuery, maxTimeMSOption());
-                return serializeResponse({ count, query: parsedQuery });
-            },
-        ),
-    );
-
-    server.registerTool(
-        'insert_documents',
-        {
-            title: 'Insert Documents',
-            description:
-                'Insert one or more documents. Pass a single document object for insertOne, or an array of documents for insertMany.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                documents: z
-                    .union([z.record(z.unknown()), z.array(z.record(z.unknown())), z.string()])
-                    .describe('Document object, array of documents, or JSON string of either'),
-            },
-        },
-        withDbGuard(
-            { toolName: 'insert_documents', requiredRole: 'write' },
-            async ({ db_name, collection_name, documents }, client) => {
-                const parsed = parseParams([
-                    { raw: documents, expected: 'any', outKey: 'documents', options: { fieldName: 'documents' } },
-                ]);
-                const parsedDocuments =
-                    typeof parsed.documents === 'string' ? JSON.parse(parsed.documents) : parsed.documents;
-                const collection = client.db(db_name).collection(collection_name);
-
-                if (Array.isArray(parsedDocuments)) {
-                    if (parsedDocuments.length === 0) throw new Error('documents array must not be empty');
-                    if (parsedDocuments.some((doc) => typeof doc !== 'object' || doc === null || Array.isArray(doc))) {
-                        throw new Error('documents array must contain JSON objects only');
-                    }
-                    assertBatchSizeWithinLimit(parsedDocuments.length, 'documents');
-                    const result = await collection.insertMany(parsedDocuments as Record<string, unknown>[]);
-                    const insertedIds = Object.values(result.insertedIds).map((id) => String(id));
-                    const response = {
-                        inserted_ids: insertedIds,
-                        acknowledged: result.acknowledged,
-                        inserted_count: insertedIds.length,
-                    };
-                    return serializeResponse(response);
-                }
-
-                if (typeof parsedDocuments !== 'object' || parsedDocuments === null) {
-                    throw new Error('documents must be a JSON object or an array of JSON objects');
-                }
-                const result = await collection.insertOne(parsedDocuments as Record<string, unknown>);
-                const response = {
-                    inserted_id: String(result.insertedId),
-                    acknowledged: result.acknowledged,
-                    inserted_count: 1,
-                };
-                return serializeResponse(response);
-            },
-        ),
-    );
-
-    server.registerTool(
-        'update_documents',
-        {
-            title: 'Update Documents',
-            description:
-                'Update one or more documents in a collection. Set multi=true for updateMany; default false uses updateOne.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                filter: objectOrStringSchema.describe('Query filter'),
-                update: objectOrStringSchema.describe('Update operations ($set, $inc, etc.) or replacement document'),
-                upsert: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe("Create the document if it doesn't exist"),
-                multi: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe('When true, update all matching documents'),
-                confirm_full_collection_operation: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe(
-                        'Required confirmation when multi=true and filter is empty. ' +
-                            'Set true to proceed with updating every document in the collection.',
-                    ),
-            },
-        },
-        withDbGuard(
-            { toolName: 'update_documents', requiredRole: 'write' },
-            async (
+        handler: async ({ db_name, collection_name, query = {}, options }, client) => {
+            const parsed = parseParams([
+                { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
                 {
-                    db_name,
-                    collection_name,
-                    filter,
-                    update,
-                    upsert = false,
-                    multi = false,
-                    confirm_full_collection_operation = false,
+                    raw: options,
+                    expected: 'object',
+                    outKey: 'options',
+                    options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
                 },
-                client,
-            ) => {
-                const parsed = parseParams([
-                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
-                    { raw: update, outKey: 'update', custom: (raw) => parseUpdate(raw, { fieldName: 'update' }).value },
-                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
-                    { raw: multi, expected: 'boolean', outKey: 'multi', options: { fieldName: 'multi' } },
-                    {
-                        raw: confirm_full_collection_operation,
-                        expected: 'boolean',
-                        outKey: 'confirm_full_collection_operation',
-                        options: { fieldName: 'confirm_full_collection_operation' },
-                    },
-                ]);
-                // Full-collection write protection (multi=true + empty filter) is enforced by
-                // withDbGuard pre-connection.
-                const collection = client.db(db_name).collection(collection_name);
-                const result = parsed.multi
-                    ? await collection.updateMany(parsed.filter as any, parsed.update as any, {
-                          upsert: parsed.upsert as boolean,
-                      })
-                    : await collection.updateOne(parsed.filter as any, parsed.update as any, {
-                          upsert: parsed.upsert as boolean,
-                      });
+            ]);
+            const parsedQuery = parsed.query as Record<string, unknown>;
+            const rawOptions = (parsed.options || {}) as Record<string, any>;
+            const findOptions = normalizeFindOptions({ skip: 0, ...rawOptions });
+            // Clamp limit to MAX_FIND_LIMIT so a single call cannot pull millions of docs.
+            const maxLimit = config.limits.maxFindLimit;
+            findOptions.limit = clampPositiveInt(findOptions.limit, {
+                maxValue: maxLimit,
+                defaultValue: maxLimit,
+                fieldName: 'options.limit',
+            });
+            const collection = client.db(db_name).collection(collection_name);
+            const documents = await collection
+                .find(parsedQuery, { ...findOptions, ...maxTimeMSOption() })
+                .toArray();
+            const totalCount = await collection.countDocuments(parsedQuery, maxTimeMSOption());
+            const limit = typeof findOptions.limit === 'number' ? findOptions.limit : maxLimit;
+            const skip = typeof findOptions.skip === 'number' ? findOptions.skip : 0;
+            const response = {
+                documents,
+                total_count: totalCount,
+                returned_count: documents.length,
+                has_more: skip + documents.length < totalCount,
+                query: parsedQuery,
+                applied_options: { ...findOptions, limit, skip },
+            };
+            return serializeResponse(response);
+        },
+    }),
+
+    defineTool({
+        name: 'count_documents',
+        title: 'Count Documents',
+        description: 'Count documents in a collection matching a query',
+        requiredRole: 'read',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            query: objectOrStringSchema.default({}).describe('Query filter in MongoDB style'),
+        },
+        handler: async ({ db_name, collection_name, query = {} }, client) => {
+            const parsed = parseParams([
+                { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
+            ]);
+            const parsedQuery = parsed.query as Record<string, unknown>;
+            const count = await client
+                .db(db_name)
+                .collection(collection_name)
+                .countDocuments(parsedQuery, maxTimeMSOption());
+            return serializeResponse({ count, query: parsedQuery });
+        },
+    }),
+
+    defineTool({
+        name: 'insert_documents',
+        title: 'Insert Documents',
+        description:
+            'Insert one or more documents. Pass a single document object for insertOne, or an array of documents for insertMany.',
+        requiredRole: 'write',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            documents: z
+                .union([z.record(z.unknown()), z.array(z.record(z.unknown())), z.string()])
+                .describe('Document object, array of documents, or JSON string of either'),
+        },
+        handler: async ({ db_name, collection_name, documents }, client) => {
+            const parsed = parseParams([
+                { raw: documents, expected: 'any', outKey: 'documents', options: { fieldName: 'documents' } },
+            ]);
+            const parsedDocuments =
+                typeof parsed.documents === 'string' ? JSON.parse(parsed.documents) : parsed.documents;
+            const collection = client.db(db_name).collection(collection_name);
+
+            if (Array.isArray(parsedDocuments)) {
+                if (parsedDocuments.length === 0) throw new Error('documents array must not be empty');
+                if (parsedDocuments.some((doc) => typeof doc !== 'object' || doc === null || Array.isArray(doc))) {
+                    throw new Error('documents array must contain JSON objects only');
+                }
+                assertBatchSizeWithinLimit(parsedDocuments.length, 'documents');
+                const result = await collection.insertMany(parsedDocuments as Record<string, unknown>[]);
+                const insertedIds = Object.values(result.insertedIds).map((id) => String(id));
                 const response = {
-                    matched_count: result.matchedCount,
-                    modified_count: result.modifiedCount,
-                    upserted_id: result.upsertedId ? String(result.upsertedId) : null,
+                    inserted_ids: insertedIds,
                     acknowledged: result.acknowledged,
-                    multi: parsed.multi,
+                    inserted_count: insertedIds.length,
                 };
                 return serializeResponse(response);
-            },
-        ),
-    );
+            }
 
-    server.registerTool(
-        'delete_documents',
-        {
-            title: 'Delete Documents',
-            description:
-                'Delete one or more documents from a collection. Set multi=true for deleteMany; default false uses deleteOne.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                filter: objectOrStringSchema.describe('Query filter'),
-                multi: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe('When true, delete all matching documents'),
-                confirm_full_collection_operation: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe(
-                        'Required confirmation when multi=true and filter is empty. ' +
-                            'Set true to proceed with deleting every document in the collection.',
-                    ),
-            },
+            if (typeof parsedDocuments !== 'object' || parsedDocuments === null) {
+                throw new Error('documents must be a JSON object or an array of JSON objects');
+            }
+            const result = await collection.insertOne(parsedDocuments as Record<string, unknown>);
+            const response = {
+                inserted_id: String(result.insertedId),
+                acknowledged: result.acknowledged,
+                inserted_count: 1,
+            };
+            return serializeResponse(response);
         },
-        withDbGuard(
-            { toolName: 'delete_documents', requiredRole: 'write' },
-            async (
-                { db_name, collection_name, filter, multi = false, confirm_full_collection_operation = false },
-                client,
-            ) => {
-                const parsed = parseParams([
-                    { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
-                    { raw: multi, expected: 'boolean', outKey: 'multi', options: { fieldName: 'multi' } },
+    }),
+
+    defineTool({
+        name: 'update_documents',
+        title: 'Update Documents',
+        description:
+            'Update one or more documents in a collection. Set multi=true for updateMany; default false uses updateOne.',
+        requiredRole: 'write',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            filter: objectOrStringSchema.describe('Query filter'),
+            update: objectOrStringSchema.describe('Update operations ($set, $inc, etc.) or replacement document'),
+            upsert: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe("Create the document if it doesn't exist"),
+            multi: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe('When true, update all matching documents'),
+            confirm_full_collection_operation: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe(
+                    'Required confirmation when multi=true and filter is empty. ' +
+                        'Set true to proceed with updating every document in the collection.',
+                ),
+        },
+        handler: async (
+            {
+                db_name,
+                collection_name,
+                filter,
+                update,
+                upsert = false,
+                multi = false,
+                confirm_full_collection_operation = false,
+            },
+            client,
+        ) => {
+            const parsed = parseParams([
+                { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
+                { raw: update, outKey: 'update', custom: (raw) => parseUpdate(raw, { fieldName: 'update' }).value },
+                { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
+                { raw: multi, expected: 'boolean', outKey: 'multi', options: { fieldName: 'multi' } },
+                {
+                    raw: confirm_full_collection_operation,
+                    expected: 'boolean',
+                    outKey: 'confirm_full_collection_operation',
+                    options: { fieldName: 'confirm_full_collection_operation' },
+                },
+            ]);
+            // Full-collection write protection (multi=true + empty filter) is enforced by
+            // withDbGuard pre-connection.
+            const collection = client.db(db_name).collection(collection_name);
+            const result = parsed.multi
+                ? await collection.updateMany(parsed.filter as any, parsed.update as any, {
+                      upsert: parsed.upsert as boolean,
+                  })
+                : await collection.updateOne(parsed.filter as any, parsed.update as any, {
+                      upsert: parsed.upsert as boolean,
+                  });
+            const response = {
+                matched_count: result.matchedCount,
+                modified_count: result.modifiedCount,
+                upserted_id: result.upsertedId ? String(result.upsertedId) : null,
+                acknowledged: result.acknowledged,
+                multi: parsed.multi,
+            };
+            return serializeResponse(response);
+        },
+    }),
+
+    defineTool({
+        name: 'delete_documents',
+        title: 'Delete Documents',
+        description:
+            'Delete one or more documents from a collection. Set multi=true for deleteMany; default false uses deleteOne.',
+        requiredRole: 'write',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            filter: objectOrStringSchema.describe('Query filter'),
+            multi: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe('When true, delete all matching documents'),
+            confirm_full_collection_operation: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe(
+                    'Required confirmation when multi=true and filter is empty. ' +
+                        'Set true to proceed with deleting every document in the collection.',
+                ),
+        },
+        handler: async (
+            { db_name, collection_name, filter, multi = false, confirm_full_collection_operation = false },
+            client,
+        ) => {
+            const parsed = parseParams([
+                { raw: filter, expected: 'object', outKey: 'filter', options: { fieldName: 'filter' } },
+                { raw: multi, expected: 'boolean', outKey: 'multi', options: { fieldName: 'multi' } },
+                {
+                    raw: confirm_full_collection_operation,
+                    expected: 'boolean',
+                    outKey: 'confirm_full_collection_operation',
+                    options: { fieldName: 'confirm_full_collection_operation' },
+                },
+            ]);
+            // Full-collection delete protection (multi=true + empty filter) is enforced by
+            // withDbGuard pre-connection.
+            const collection = client.db(db_name).collection(collection_name);
+            const result = parsed.multi
+                ? await collection.deleteMany(parsed.filter as any)
+                : await collection.deleteOne(parsed.filter as any);
+            const response = {
+                deleted_count: result.deletedCount,
+                acknowledged: result.acknowledged,
+                multi: parsed.multi,
+            };
+            return serializeResponse(response);
+        },
+    }),
+
+    defineTool({
+        name: 'aggregate',
+        title: 'Aggregate',
+        description: 'Run an aggregation pipeline on a collection',
+        requiredRole: 'read',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            pipeline: z.union([z.array(z.record(z.unknown())), z.string()]).describe('Aggregation pipeline stages'),
+            allow_disk_use: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe('Allow pipeline stages to write to disk'),
+        },
+        handler: async ({ db_name, collection_name, pipeline, allow_disk_use = false }, client) => {
+            const parsed = parseParams([
+                { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
+                {
+                    raw: allow_disk_use,
+                    expected: 'boolean',
+                    outKey: 'allow_disk_use',
+                    options: { fieldName: 'allow_disk_use' },
+                },
+            ]);
+            assertAggregatePipelineIsReadOnly(parsed.pipeline as unknown[]);
+            // Per-profile resource scope on every namespace referenced from inside the pipeline
+            // is already enforced by withDbGuard via assertPipelineNamespacesAllowed (pre-connection).
+            const results = await client
+                .db(db_name)
+                .collection(collection_name)
+                .aggregate(parsed.pipeline as any[], {
+                    allowDiskUse: parsed.allow_disk_use as boolean,
+                    ...maxTimeMSOption(),
+                })
+                .toArray();
+            return serializeResponse({ results, total_count: results.length });
+        },
+    }),
+
+    defineTool({
+        name: 'find_and_modify',
+        title: 'Find And Modify',
+        description:
+            'Find one document and apply an update atomically. Returns the document BEFORE modification, or null if it did not exist.',
+        requiredRole: 'write',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            query: objectOrStringSchema.describe('Query filter'),
+            update: objectOrStringSchema.describe('Update operations ($set, $inc, etc.)'),
+            upsert: z
+                .union([z.boolean(), z.string()])
+                .default(false)
+                .describe('Create document if it does not exist'),
+        },
+        handler: async ({ db_name, collection_name, query, update, upsert = false }, client) => {
+            const parsed = parseParams([
+                { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
+                { raw: update, outKey: 'update', custom: (raw) => parseUpdate(raw, { fieldName: 'update' }).value },
+                { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
+            ]);
+            const result = await client
+                .db(db_name)
+                .collection(collection_name)
+                .findOneAndUpdate(
+                    parsed.query as any,
+                    parsed.update as any,
                     {
-                        raw: confirm_full_collection_operation,
-                        expected: 'boolean',
-                        outKey: 'confirm_full_collection_operation',
-                        options: { fieldName: 'confirm_full_collection_operation' },
-                    },
-                ]);
-                // Full-collection delete protection (multi=true + empty filter) is enforced by
-                // withDbGuard pre-connection.
-                const collection = client.db(db_name).collection(collection_name);
-                const result = parsed.multi
-                    ? await collection.deleteMany(parsed.filter as any)
-                    : await collection.deleteOne(parsed.filter as any);
-                const response = {
-                    deleted_count: result.deletedCount,
-                    acknowledged: result.acknowledged,
-                    multi: parsed.multi,
-                };
-                return serializeResponse(response);
-            },
-        ),
-    );
-
-    server.registerTool(
-        'aggregate',
-        {
-            title: 'Aggregate',
-            description: 'Run an aggregation pipeline on a collection',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                pipeline: z.union([z.array(z.record(z.unknown())), z.string()]).describe('Aggregation pipeline stages'),
-                allow_disk_use: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe('Allow pipeline stages to write to disk'),
-            },
+                        upsert: parsed.upsert as boolean,
+                        returnDocument: 'before',
+                        includeResultMetadata: true,
+                        ...maxTimeMSOption(),
+                    } as any,
+                );
+            const metadata = result as any;
+            const response = {
+                matched: metadata.lastErrorObject?.updatedExisting ?? false,
+                upserted_id: metadata.lastErrorObject?.upserted
+                    ? String(metadata.lastErrorObject.upserted)
+                    : undefined,
+                original_document: metadata.value ?? null,
+                query: parsed.query,
+                update: parsed.update,
+                upsert: parsed.upsert,
+            };
+            return serializeResponse(response);
         },
-        withDbGuard(
-            { toolName: 'aggregate', requiredRole: 'read' },
-            async ({ db_name, collection_name, pipeline, allow_disk_use = false }, client) => {
+    }),
+
+    defineTool({
+        name: 'explain_operation',
+        title: 'Explain Operation',
+        description:
+            'Explain the execution plan with executionStats verbosity for a find, count, or aggregate operation.',
+        requiredRole: 'read',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database'),
+            collection_name: z.string().describe('Name of the collection'),
+            operation: z.enum(['find', 'count', 'aggregate']).describe('Which operation to explain'),
+            query: objectOrStringSchema.default({}).describe('Filter for find/count operations'),
+            options: z
+                .union([z.record(z.unknown()), z.string()])
+                .optional()
+                .describe('For operation=find: consolidated options object with sort, projection, limit, skip'),
+            pipeline: z
+                .union([z.array(z.record(z.unknown())), z.string()])
+                .optional()
+                .describe('Aggregation pipeline stages; required when operation=aggregate'),
+        },
+        handler: async ({ db_name, collection_name, operation, query = {}, options, pipeline }, client) => {
+            const db = client.db(db_name);
+            if (operation === 'aggregate') {
                 const parsed = parseParams([
                     { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
-                    {
-                        raw: allow_disk_use,
-                        expected: 'boolean',
-                        outKey: 'allow_disk_use',
-                        options: { fieldName: 'allow_disk_use' },
-                    },
                 ]);
                 assertAggregatePipelineIsReadOnly(parsed.pipeline as unknown[]);
-                // Per-profile resource scope on every namespace referenced from inside the pipeline
-                // is already enforced by withDbGuard via assertPipelineNamespacesAllowed (pre-connection).
-                const results = await client
-                    .db(db_name)
-                    .collection(collection_name)
-                    .aggregate(parsed.pipeline as any[], {
-                        allowDiskUse: parsed.allow_disk_use as boolean,
-                        ...maxTimeMSOption(),
-                    })
-                    .toArray();
-                return serializeResponse({ results, total_count: results.length });
-            },
-        ),
-    );
-
-    server.registerTool(
-        'find_and_modify',
-        {
-            title: 'Find And Modify',
-            description:
-                'Find one document and apply an update atomically. Returns the document BEFORE modification, or null if it did not exist.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                query: objectOrStringSchema.describe('Query filter'),
-                update: objectOrStringSchema.describe('Update operations ($set, $inc, etc.)'),
-                upsert: z
-                    .union([z.boolean(), z.string()])
-                    .default(false)
-                    .describe('Create document if it does not exist'),
-            },
-        },
-        withDbGuard(
-            { toolName: 'find_and_modify', requiredRole: 'write' },
-            async ({ db_name, collection_name, query, update, upsert = false }, client) => {
-                const parsed = parseParams([
-                    { raw: query, expected: 'object', outKey: 'query', options: { fieldName: 'query' } },
-                    { raw: update, outKey: 'update', custom: (raw) => parseUpdate(raw, { fieldName: 'update' }).value },
-                    { raw: upsert, expected: 'boolean', outKey: 'upsert', options: { fieldName: 'upsert' } },
-                ]);
-                const result = await client
-                    .db(db_name)
-                    .collection(collection_name)
-                    .findOneAndUpdate(
-                        parsed.query as any,
-                        parsed.update as any,
-                        {
-                            upsert: parsed.upsert as boolean,
-                            returnDocument: 'before',
-                            includeResultMetadata: true,
-                            ...maxTimeMSOption(),
-                        } as any,
-                    );
-                const metadata = result as any;
-                const response = {
-                    matched: metadata.lastErrorObject?.updatedExisting ?? false,
-                    upserted_id: metadata.lastErrorObject?.upserted
-                        ? String(metadata.lastErrorObject.upserted)
-                        : undefined,
-                    original_document: metadata.value ?? null,
-                    query: parsed.query,
-                    update: parsed.update,
-                    upsert: parsed.upsert,
+                // Pipeline namespace scope already enforced by withDbGuard (pre-connection).
+                const command = {
+                    explain: { aggregate: collection_name, pipeline: parsed.pipeline as any[], cursor: {} },
+                    verbosity: 'executionStats',
                 };
-                return serializeResponse(response);
-            },
-        ),
-    );
-
-    server.registerTool(
-        'explain_operation',
-        {
-            title: 'Explain Operation',
-            description:
-                'Explain the execution plan with executionStats verbosity for a find, count, or aggregate operation.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database'),
-                collection_name: z.string().describe('Name of the collection'),
-                operation: z.enum(['find', 'count', 'aggregate']).describe('Which operation to explain'),
-                query: objectOrStringSchema.default({}).describe('Filter for find/count operations'),
-                options: z
-                    .union([z.record(z.unknown()), z.string()])
-                    .optional()
-                    .describe('For operation=find: consolidated options object with sort, projection, limit, skip'),
-                pipeline: z
-                    .union([z.array(z.record(z.unknown())), z.string()])
-                    .optional()
-                    .describe('Aggregation pipeline stages; required when operation=aggregate'),
-            },
-        },
-        withDbGuard(
-            { toolName: 'explain_operation', requiredRole: 'read' },
-            async ({ db_name, collection_name, operation, query = {}, options, pipeline }, client) => {
-                const db = client.db(db_name);
-                if (operation === 'aggregate') {
-                    const parsed = parseParams([
-                        { raw: pipeline, expected: 'array', outKey: 'pipeline', options: { fieldName: 'pipeline' } },
-                    ]);
-                    assertAggregatePipelineIsReadOnly(parsed.pipeline as unknown[]);
-                    // Pipeline namespace scope already enforced by withDbGuard (pre-connection).
-                    const command = {
-                        explain: { aggregate: collection_name, pipeline: parsed.pipeline as any[], cursor: {} },
-                        verbosity: 'executionStats',
-                    };
-                    const explain = await db.command(command as any);
-                    return serializeResponse(explain);
-                }
-
-                const parsed = parseParams([
-                    {
-                        raw: query,
-                        expected: 'object',
-                        outKey: 'query',
-                        options: { fieldName: 'query', defaultValue: {} },
-                    },
-                    {
-                        raw: options,
-                        expected: 'object',
-                        outKey: 'options',
-                        options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
-                    },
-                ]);
-                const parsedQuery = parsed.query as Record<string, unknown>;
-                if (operation === 'count') {
-                    const command = {
-                        explain: { count: collection_name, query: parsedQuery },
-                        verbosity: 'executionStats',
-                    };
-                    const explain = await db.command(command as any);
-                    return serializeResponse(explain);
-                }
-
-                const findOptions = normalizeFindOptions(parsed.options as Record<string, any> | undefined);
-                if (findOptions.limit !== undefined) {
-                    findOptions.limit = clampPositiveInt(findOptions.limit, {
-                        maxValue: config.limits.maxFindLimit,
-                        defaultValue: config.limits.maxFindLimit,
-                        fieldName: 'options.limit',
-                    });
-                }
-                const findCommand: Record<string, any> = { find: collection_name, filter: parsedQuery };
-                if (findOptions.sort !== undefined) findCommand.sort = findOptions.sort;
-                if (findOptions.projection !== undefined) findCommand.projection = findOptions.projection;
-                if (findOptions.limit !== undefined) findCommand.limit = findOptions.limit;
-                if (findOptions.skip !== undefined) findCommand.skip = findOptions.skip;
-                const command = { explain: findCommand, verbosity: 'executionStats' };
                 const explain = await db.command(command as any);
-                return serializeResponse({ options_applied: findOptions, explain });
-            },
-        ),
-    );
+                return serializeResponse(explain);
+            }
+
+            const parsed = parseParams([
+                {
+                    raw: query,
+                    expected: 'object',
+                    outKey: 'query',
+                    options: { fieldName: 'query', defaultValue: {} },
+                },
+                {
+                    raw: options,
+                    expected: 'object',
+                    outKey: 'options',
+                    options: { fieldName: 'options', optional: true, treatEmptyObjectAsUndefined: true },
+                },
+            ]);
+            const parsedQuery = parsed.query as Record<string, unknown>;
+            if (operation === 'count') {
+                const command = {
+                    explain: { count: collection_name, query: parsedQuery },
+                    verbosity: 'executionStats',
+                };
+                const explain = await db.command(command as any);
+                return serializeResponse(explain);
+            }
+
+            const findOptions = normalizeFindOptions(parsed.options as Record<string, any> | undefined);
+            if (findOptions.limit !== undefined) {
+                findOptions.limit = clampPositiveInt(findOptions.limit, {
+                    maxValue: config.limits.maxFindLimit,
+                    defaultValue: config.limits.maxFindLimit,
+                    fieldName: 'options.limit',
+                });
+            }
+            const findCommand: Record<string, any> = { find: collection_name, filter: parsedQuery };
+            if (findOptions.sort !== undefined) findCommand.sort = findOptions.sort;
+            if (findOptions.projection !== undefined) findCommand.projection = findOptions.projection;
+            if (findOptions.limit !== undefined) findCommand.limit = findOptions.limit;
+            if (findOptions.skip !== undefined) findCommand.skip = findOptions.skip;
+            const command = { explain: findCommand, verbosity: 'executionStats' };
+            const explain = await db.command(command as any);
+            return serializeResponse({ options_applied: findOptions, explain });
+        },
+    }),
+];
+
+export function registerDocumentTools(server: McpServer): void {
+    registerToolDefinitions(server, documentToolDefinitions);
 }

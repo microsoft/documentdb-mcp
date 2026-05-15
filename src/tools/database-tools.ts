@@ -3,32 +3,32 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+
 import { getProfileScope } from '../security/connectionProfiles';
+import { defineTool, registerToolDefinitions, type ToolDefinition } from './registry';
 import { assertDestructiveConfirmation } from './utils/confirmations';
-import { withDbGuard } from './utils/dbGuard';
 import { serializeResponse } from './utils/limits';
 import { connectionProfileSchema } from './utils/toolSecurity';
 
-export function registerDatabaseTools(server: McpServer): void {
-    server.registerTool(
-        'list_databases',
-        {
-            title: 'List Databases',
-            description:
-                'List all databases on the cluster. If db_name is provided, return that database collections with estimated document counts.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z
-                    .string()
-                    .optional()
-                    .describe(
-                        'Optional database name. When provided, returns collections and counts for this database only.',
-                    ),
-            },
+export const databaseToolDefinitions: ToolDefinition[] = [
+    defineTool({
+        name: 'list_databases',
+        title: 'List Databases',
+        description:
+            'List all databases on the cluster. If db_name is provided, return that database collections with estimated document counts.',
+        requiredRole: 'read',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z
+                .string()
+                .optional()
+                .describe(
+                    'Optional database name. When provided, returns collections and counts for this database only.',
+                ),
         },
-        withDbGuard({ toolName: 'list_databases', requiredRole: 'read' }, async ({ connection_profile, db_name }, client) => {
+        handler: async ({ connection_profile, db_name }, client) => {
             const scope = getProfileScope(connection_profile);
             const allowedDbs = scope.allowedDatabases;
             const deniedDbs = scope.deniedDatabases;
@@ -78,35 +78,35 @@ export function registerDatabaseTools(server: McpServer): void {
                     }),
             );
             return serializeResponse({ database_name: db_name, collections: collectionInfos });
-        }),
-    );
-
-    server.registerTool(
-        'drop_database',
-        {
-            title: 'Drop Database',
-            description:
-                'Drop a database and all its collections. Requires confirm_db_name to exactly equal db_name.',
-            inputSchema: {
-                connection_profile: connectionProfileSchema,
-                db_name: z.string().describe('Name of the database to drop'),
-                confirm_db_name: z
-                    .string()
-                    .describe('Must exactly equal db_name. Confirms the destructive drop_database operation.'),
-            },
         },
-        withDbGuard(
-            { toolName: 'drop_database', requiredRole: 'management' },
-            async ({ db_name, confirm_db_name }, client) => {
-                assertDestructiveConfirmation('confirm_db_name', db_name, confirm_db_name);
-                const result = await client.db(db_name).dropDatabase();
+    }),
+
+    defineTool({
+        name: 'drop_database',
+        title: 'Drop Database',
+        description:
+            'Drop a database and all its collections. Requires confirm_db_name to exactly equal db_name.',
+        requiredRole: 'management',
+        inputSchema: {
+            connection_profile: connectionProfileSchema,
+            db_name: z.string().describe('Name of the database to drop'),
+            confirm_db_name: z
+                .string()
+                .describe('Must exactly equal db_name. Confirms the destructive drop_database operation.'),
+        },
+        handler: async ({ db_name, confirm_db_name }, client) => {
+            assertDestructiveConfirmation('confirm_db_name', db_name, confirm_db_name);
+            const result = await client.db(db_name).dropDatabase();
             const response = {
                 success: true,
                 message: `Database '${db_name}' dropped successfully`,
                 data: result,
             };
-                return serializeResponse(response);
-            },
-        ),
-    );
+            return serializeResponse(response);
+        },
+    }),
+];
+
+export function registerDatabaseTools(server: McpServer): void {
+    registerToolDefinitions(server, databaseToolDefinitions);
 }
