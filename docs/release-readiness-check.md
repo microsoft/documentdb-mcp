@@ -285,18 +285,35 @@ Tests:
 - [test/security/configValidation.test.ts](../test/security/configValidation.test.ts) — 26 tests covering happy paths (stdio, entra with `tokenScope`, entra with `tokenResource`, `uriEnv` set), every failure mode in the table above, empty-array allowlist semantics, and aggregated multi-error reporting.
 - Existing [test/config.test.ts](../test/config.test.ts) continues to cover Layer 1 (hard-cap rejections, defaults).
 
-### 7. Health And Readiness Endpoints
+### 7. Health And Readiness Endpoints — DONE
 
-For HTTP and SSE deployments, add operational probes.
+For HTTP and SSE deployments, two operational probes are mounted at the top of the Express app, **before** auth and rate-limit middleware, so orchestration platforms (Kubernetes, ACA, etc.) can call them without bearer tokens at constant frequency.
 
-Recommended endpoints:
+| Endpoint | Purpose | Success | Failure |
+|---|---|---|---|
+| `GET /healthz` | Liveness — is the process responding to HTTP? | `200 {"status":"ok"}` | (process down → connection refused) |
+| `GET /readyz`  | Readiness — is configuration loaded and structurally valid? | `200 {"status":"ready"}` | `503 {"status":"not_ready","error":"<aggregated message from validateConfig>"}` |
 
-```text
-GET /healthz
-GET /readyz
-```
+Behavior notes:
 
-`/healthz` should confirm the process is alive. `/readyz` should confirm configuration is loaded and structurally valid. Avoid connecting to every customer database on every readiness probe unless this is configurable.
+- `/healthz` is a pure liveness probe. It never touches `config` or any backend, so it remains `200` even if `validateConfig` would fail (a process that boots through startup validation and then has its config mutated to an invalid shape is still alive — just not ready).
+- `/readyz` re-runs `validateConfig(config)` against the in-memory `config` on every call. The check is pure (no I/O beyond `process.env` reads for `uriEnv`) and returns in microseconds. **It does not open backend connections** per the original §7 guidance ("Avoid connecting to every customer database on every readiness probe unless this is configurable.").
+- Both endpoints bypass the auth middleware (`requireHttpAuthentication`) and the rate-limit middleware (`createRateLimitMiddleware`) by virtue of mount order in `runHttpServer` / `runSseServer`.
+- Only mounted on `streamable-http` and `sse` transports. Stdio transport has no listening port and uses process liveness as its own health signal.
+
+Implementation:
+
+- [src/health.ts](../src/health.ts) — `registerHealthRoutes(app, cfg?)` mounts both routes
+- [src/server.ts](../src/server.ts) — called from both `runHttpServer` and `runSseServer` immediately after `express.json()` and before `createRateLimitMiddleware()` / `requireHttpAuthentication()`
+
+Tests:
+
+- [test/health.test.ts](../test/health.test.ts) — 5 tests booting a real Express app on an ephemeral port and issuing live HTTP requests via `node:http`:
+  - `/healthz` returns `200 {status:'ok'}` on a healthy app
+  - `/healthz` still returns `200` even when the supplied config is invalid (liveness ≠ readiness)
+  - `/readyz` returns `200 {status:'ready'}` when config is valid
+  - `/readyz` returns `503 {status:'not_ready', error}` and surfaces the aggregated `validateConfig` message when config is invalid
+  - Mount-order check: a 401 catch-all middleware is installed after the health routes; both probes still return `200` while every other path returns `401`
 
 ### 8. Production Configuration Guide
 

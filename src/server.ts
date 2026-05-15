@@ -11,6 +11,7 @@ import express, { type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
 import { config } from './config';
+import { registerHealthRoutes } from './health';
 import { getRequestPrincipal, requireHttpAuthentication } from './security/auth';
 import { createRateLimitMiddleware } from './security/rateLimit';
 import { runWithRequestContext } from './security/requestContext';
@@ -61,6 +62,8 @@ export async function runStdioServer(): Promise<void> {
 export async function runHttpServer(): Promise<void> {
     const app = express();
     app.use(express.json());
+    // Mount /healthz and /readyz BEFORE auth + rate limit so probes remain reachable.
+    registerHealthRoutes(app);
     const transports: Record<string, StreamableHTTPServerTransport> = {};
     const rateLimitMiddleware = createRateLimitMiddleware();
 
@@ -182,6 +185,8 @@ export async function runServer(): Promise<void> {
 export async function runSseServer(): Promise<void> {
     const app = express();
     app.use(express.json());
+    // Mount /healthz and /readyz BEFORE auth + rate limit so probes remain reachable.
+    registerHealthRoutes(app);
     const rateLimitMiddleware = createRateLimitMiddleware();
 
     const transports: Record<string, SSEServerTransport> = {};
