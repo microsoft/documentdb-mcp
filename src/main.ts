@@ -6,9 +6,17 @@
 
 import path from 'path';
 import { config } from './config';
+import { validateConfig } from './security/configValidation';
 import { runServer } from './server';
 
 async function main(): Promise<void> {
+    try {
+        validateConfig(config);
+    } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+    }
+
     console.error(`Starting DocumentDB MCP server with transport: ${config.transport}`);
 
     if (config.transport === 'streamable-http') {

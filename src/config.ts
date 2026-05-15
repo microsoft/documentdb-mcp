@@ -162,7 +162,17 @@ function parseConnectionProfiles(
     value: string | undefined,
     filePath: string | undefined,
 ): Record<string, ConnectionProfileConfig> {
-    const rawValue = value || (filePath ? readFileSync(filePath, 'utf8') : undefined);
+    let rawValue = value;
+    if (!rawValue && filePath) {
+        try {
+            rawValue = readFileSync(filePath, 'utf8');
+        } catch (error) {
+            throw new Error(
+                `CONNECTION_PROFILES_FILE='${filePath}' could not be read: ` +
+                    `${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }
     if (!rawValue) return {};
     try {
         const parsed = JSON.parse(rawValue) as Record<string, ConnectionProfileConfig>;

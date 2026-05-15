@@ -245,22 +245,45 @@ Tests:
 
 Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
 
-### 6. Startup Configuration Validation
+### 6. Startup Configuration Validation — DONE
 
-Validate configuration at startup and fail fast with actionable messages.
+The server validates its full configuration at startup, **before** any transport, server, or tool is registered. Misconfiguration is reported as an aggregated error listing every problem found in one go (so operators see the full picture rather than playing whack-a-mole) and the process exits with code `1`.
 
-Recommended validation checks:
+Validation runs in two layers:
 
-- Invalid `TRANSPORT`
-- Invalid `PORT`
-- `AUTH_REQUIRED=true` without `ENTRA_TENANT_ID`
-- `AUTH_REQUIRED=true` without `ENTRA_AUDIENCE` or `ENTRA_CLIENT_ID`
-- Malformed `CONNECTION_PROFILES`
-- Profile file path is unreadable
-- Entra profile missing `endpoint`/`uri`
-- Entra profile missing `tokenScope` or `tokenResource`
-- Invalid allowlist shape
-- Invalid role/capability shape
+**Layer 1 — already validated during config parsing** ([src/config.ts](../src/config.ts)):
+
+| Check | Behavior |
+|---|---|
+| Numeric env vars (`MAX_FIND_LIMIT`, `MAX_SAMPLE_SIZE`, `MAX_INSERT_BATCH_SIZE`, `MAX_RETURN_BYTES`, `MONGODB_MAX_TIME_MS`) | Must be positive integers and at or below the documented Azure DocumentDB hard caps (`BACKEND_HARD_LIMITS`). |
+| `CONNECTION_PROFILES` JSON | Must parse and be a JSON object (not array, not scalar). Parse errors are wrapped with the offending env-var name. |
+| `CONNECTION_PROFILES_FILE` path | If set and unreadable, throws `CONNECTION_PROFILES_FILE='<path>' could not be read: <reason>` instead of a raw `ENOENT`. |
+
+**Layer 2 — `validateConfig`** ([src/security/configValidation.ts](../src/security/configValidation.ts)):
+
+| Check | Failure example |
+|---|---|
+| `TRANSPORT` must be `stdio` \| `sse` \| `streamable-http` | `TRANSPORT='websocket' is invalid. Must be one of: stdio, sse, streamable-http.` |
+| `PORT` must be an integer in `[1, 65535]` | `PORT=70000 is invalid. Must be an integer in [1, 65535].` |
+| `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS` must be positive integers | `RATE_LIMIT_WINDOW_MS=NaN must be a positive integer.` |
+| `AUTH_REQUIRED=true` requires `ENTRA_TENANT_ID` | `AUTH_REQUIRED=true requires ENTRA_TENANT_ID to be set.` |
+| `AUTH_REQUIRED=true` requires `ENTRA_AUDIENCE` (or `ENTRA_CLIENT_ID`) | `AUTH_REQUIRED=true requires ENTRA_AUDIENCE (or ENTRA_CLIENT_ID) to be set.` |
+| Profile `authMode` (when set) must be `'entra'` or `'connectionString'` | `Connection profile 'dev' has invalid authMode='oauth'.` |
+| Entra profile must define `endpoint` (or `uri`) | `Connection profile 'prod' uses Entra authentication and must define endpoint (or uri).` |
+| Entra profile must define `tokenScope` or `tokenResource` | `Connection profile 'prod' uses Entra authentication and must define tokenScope or tokenResource.` |
+| Connection-string profile must define `uri` or `uriEnv` | `Connection profile 'dev' must define authMode=entra, uri, or uriEnv.` |
+| `uriEnv` must point to an env var that is actually set | `Connection profile 'dev' references environment variable 'DEV_URI', which is not set.` |
+| `allowedDatabases` / `deniedDatabases` / `allowedHosts` shape | Must be a string array; each element must be a string. |
+| `allowedCollections` / `deniedCollections` shape | Must be `Record<db, string[]>`; each value must be a string array of strings. |
+| `allowedRoles` shape | Must be a string array drawn from `read` \| `write` \| `management`. |
+
+Empty arrays remain valid everywhere they were already meaningful (explicit deny-all semantics for `allowedDatabases`, `allowedRoles`, `allowedCollections[db]`).
+
+Wired from [src/main.ts](../src/main.ts) — `validateConfig(config)` runs immediately after `config` is loaded, before `runServer()`. On failure the aggregated message is printed to stderr and the process exits with code `1`.
+
+Tests:
+- [test/security/configValidation.test.ts](../test/security/configValidation.test.ts) — 26 tests covering happy paths (stdio, entra with `tokenScope`, entra with `tokenResource`, `uriEnv` set), every failure mode in the table above, empty-array allowlist semantics, and aggregated multi-error reporting.
+- Existing [test/config.test.ts](../test/config.test.ts) continues to cover Layer 1 (hard-cap rejections, defaults).
 
 ### 7. Health And Readiness Endpoints
 
