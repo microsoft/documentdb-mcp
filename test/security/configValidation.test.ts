@@ -170,6 +170,48 @@ describe('validateConfig', () => {
                 ),
             ).toThrow(/invalid authMode='oauth'/);
         });
+        it('with invalid authMode, does not also emit a contradictory uri/uriEnv error', () => {
+            // Profile has invalid authMode AND no uri/uriEnv. Pre-fix this produced two
+            // contradictory errors; we now want exactly one — the authMode message —
+            // because suggesting `authMode=entra, uri, or uriEnv` would conflict with the
+            // already-flagged authMode field.
+            try {
+                validateConfig(
+                    baseConfig({
+                        connectionProfiles: { dev: { authMode: 'oauth' as any } },
+                    }),
+                );
+                throw new Error('expected validateConfig to throw');
+            } catch (error) {
+                const message = (error as Error).message;
+                expect(message).toMatch(/invalid authMode='oauth'/);
+                expect(message).not.toMatch(/must define authMode=entra, uri, or uriEnv/);
+                expect(message).toMatch(/Found 1 problem\(s\)/);
+            }
+        });
+        it('with invalid authMode, still surfaces orthogonal allowlist shape errors', () => {
+            // authMode is broken AND allowedRoles has an unknown tier. The two are independent;
+            // surfacing both in one pass is the headline UX of aggregated reporting.
+            try {
+                validateConfig(
+                    baseConfig({
+                        connectionProfiles: {
+                            dev: {
+                                authMode: 'oauth' as any,
+                                uri: 'mongodb://x',
+                                allowedRoles: ['admin'] as any,
+                            },
+                        },
+                    }),
+                );
+                throw new Error('expected validateConfig to throw');
+            } catch (error) {
+                const message = (error as Error).message;
+                expect(message).toMatch(/invalid authMode='oauth'/);
+                expect(message).toMatch(/allowedRoles\[0\]='admin' is invalid/);
+                expect(message).toMatch(/Found 2 problem\(s\)/);
+            }
+        });
         it('rejects entra profile missing endpoint', () => {
             expect(() =>
                 validateConfig(

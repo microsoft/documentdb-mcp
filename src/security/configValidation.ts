@@ -79,39 +79,45 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
         return;
     }
 
-    if (
+    const authModeIsInvalid =
         profile.authMode !== undefined &&
         profile.authMode !== 'entra' &&
-        profile.authMode !== 'connectionString'
-    ) {
+        profile.authMode !== 'connectionString';
+    if (authModeIsInvalid) {
         errors.push(
             `Connection profile '${name}' has invalid authMode='${profile.authMode}'. ` +
                 `Must be 'entra' or 'connectionString'.`,
         );
     }
 
-    if (profile.authMode === 'entra') {
-        if (!profile.endpoint && !profile.uri) {
-            errors.push(
-                `Connection profile '${name}' uses Entra authentication and must define endpoint (or uri).`,
-            );
-        }
-        if (!profile.tokenScope && !profile.tokenResource) {
-            errors.push(
-                `Connection profile '${name}' uses Entra authentication and must define tokenScope or tokenResource.`,
-            );
-        }
-    } else {
-        // Either explicit 'connectionString' or unspecified: must yield a usable URI source.
-        if (!profile.uri && !profile.uriEnv) {
-            errors.push(
-                `Connection profile '${name}' must define authMode=entra, uri, or uriEnv.`,
-            );
-        }
-        if (profile.uriEnv && !process.env[profile.uriEnv]) {
-            errors.push(
-                `Connection profile '${name}' references environment variable '${profile.uriEnv}', which is not set.`,
-            );
+    // Only run auth-source checks (entra requirements vs connectionString uri/uriEnv) when
+    // authMode is recognized. With an invalid authMode the operator already has one clear,
+    // actionable error; piling on a second message that suggests `authMode=entra` as a fix
+    // would contradict the first. Allowlist shape checks below are orthogonal and still run.
+    if (!authModeIsInvalid) {
+        if (profile.authMode === 'entra') {
+            if (!profile.endpoint && !profile.uri) {
+                errors.push(
+                    `Connection profile '${name}' uses Entra authentication and must define endpoint (or uri).`,
+                );
+            }
+            if (!profile.tokenScope && !profile.tokenResource) {
+                errors.push(
+                    `Connection profile '${name}' uses Entra authentication and must define tokenScope or tokenResource.`,
+                );
+            }
+        } else {
+            // Either explicit 'connectionString' or unspecified: must yield a usable URI source.
+            if (!profile.uri && !profile.uriEnv) {
+                errors.push(
+                    `Connection profile '${name}' must define authMode=entra, uri, or uriEnv.`,
+                );
+            }
+            if (profile.uriEnv && !process.env[profile.uriEnv]) {
+                errors.push(
+                    `Connection profile '${name}' references environment variable '${profile.uriEnv}', which is not set.`,
+                );
+            }
         }
     }
 
