@@ -187,6 +187,8 @@ Role hierarchy:
 management > write > read
 ```
 
+The current implementation unions claim values from `roles`, `groups`, and `scp` into one authorization set, then applies highest-tier-wins evaluation. For example, if any configured management value is present in any of those claim sources, the caller is treated as `management`; otherwise the server checks `write`, then `read`. Audit records include caller identity metadata, but they do not currently record which claim source or exact claim value matched.
+
 Why this helps:
 
 - Read-only users can be prevented from invoking mutation or management tools through MCP.
@@ -217,6 +219,8 @@ Every tool uses a connection profile. In enterprise HTTP/SSE usage, tools should
 
 Profiles are configured by the MCP server administrator through `CONNECTION_PROFILES` or `CONNECTION_PROFILES_FILE`. Production profiles should use `authMode=entra` with MongoDB OIDC and Azure Identity. Connection-string profiles are still supported for local or sandbox use, but they are constrained to administrator-defined profiles rather than being supplied dynamically by the agent.
 
+Connection-string profiles are not transport-limited by startup validation. A hosted HTTP/SSE deployment can use `authMode=connectionString` when required for backend compatibility, but this is a deliberate operator decision: it uses a shared backend credential and therefore has weaker per-user backend attribution than `authMode=entra`.
+
 Why this helps:
 
 - Agents cannot introduce unreviewed credentials at runtime.
@@ -236,7 +240,21 @@ RATE_LIMIT_MAX_REQUESTS=120
 
 This protects shared endpoints from accidental high-frequency agent loops and gives operators a coarse quota control for hosted deployments. Tool-specific limits provide an additional layer after authorization, including maximum find/sample sizes, insert batch size, response bytes, and MongoDB `maxTimeMS`.
 
+Current rate-limit semantics are intentionally coarse. HTTP/SSE use the default `express-rate-limit` keying behavior, which is per client IP unless the deployment overrides proxy/IP handling outside this server. Local `stdio` uses a process-local request counter for the configured window. The current limiter is not per Entra `oid`, per profile, or per tool.
+
 Future enterprise quota policies can be layered on the same enforcement point, for example per-caller, per-role, per-profile, or per-tool budgets. The current design already records caller identity, transport, profile, and tool name in audit events so those quota dimensions are observable.
+
+#### Startup Configuration Validation
+
+The server validates startup configuration before registering tools or accepting traffic. Validation is fail-fast but aggregated: when multiple independent settings are invalid, the startup error lists all detected problems instead of stopping at the first one.
+
+Startup validation covers transport, port, auth requirements, rate-limit numeric settings, profile shape, profile auth requirements, allowed/denied scope field shapes, and `DEFAULT_CONNECTION_PROFILE` constraints. In addition, numeric safety limits are bounded by backend hard ceilings so an operator cannot start the server with values above known Azure DocumentDB / MongoDB-compatible backend limits. These hard ceilings include maximum find/sample limits, insert batch size, response bytes, and MongoDB `maxTimeMS`.
+
+Why this helps:
+
+- Operators get actionable configuration feedback before the MCP server starts.
+- Multiple mistakes can be fixed in one pass.
+- Unsafe limit values are rejected at startup instead of surfacing later as opaque backend driver errors.
 
 #### Profile-Level Capability And Resource Restrictions
 
@@ -253,6 +271,10 @@ Connection profiles can further restrict what the profile allows:
     "allowedDatabases": ["fleet"],
     "allowedCollections": {
       "fleet": ["vehicles", "maintenance"]
+    },
+    "deniedDatabases": ["payroll"],
+    "deniedCollections": {
+      "fleet": ["audit_log"]
     }
   }
 }
@@ -264,6 +286,9 @@ Important semantics:
 - `allowedRoles: []` means deny-all.
 - `allowedDatabases` omitted means all databases; `[]` means deny-all.
 - `allowedCollections[db]` omitted means all collections in that database; `[]` means deny-all for that database.
+- `deniedDatabases` and `deniedCollections[db]` are deny-wins blocklists. Omitted or empty means no extra denial; listed values are denied even if an allowlist would otherwise permit them.
+
+The default semantics are intentionally asymmetric. Omitting `allowedRoles` is conservative and means read-only. Omitting `allowedDatabases` or `allowedCollections[db]` is broad and means unrestricted at that resource level. Production profiles should explicitly set database and collection allowlists when narrow data scope is required.
 
 Why this helps:
 
@@ -278,6 +303,9 @@ The server adds controls beyond role checks:
 
 - Destructive operations require confirmation fields: `confirm_db_name`, `confirm_collection_name`, `confirm_index_name`.
 - `aggregate` and `explain_operation` reject `$out` and `$merge` by default unless `ALLOW_AGGREGATE_WRITE_STAGES=true`.
+- Aggregation namespace references are checked against the selected profile's resource scope before opening a backend connection. The server walks `$lookup.from` including nested pipelines, `$unionWith`, `$graphLookup.from`, `$merge.into`, `$out`, and `$facet` sub-pipelines, then applies the same database/collection allowlist and denylist checks used for top-level tool inputs.
+- `update_documents` and `delete_documents` reject `multi=true` with an empty filter unless `confirm_full_collection_operation=true` is provided. This guard runs before any backend connection is opened.
+- `aggregate.allow_disk_use` is a caller-controlled tool parameter, not a deployment-level server knob. It is still bounded by the server's runtime and response-size controls, but the current design does not prevent a caller from requesting disk use for an allowed aggregation.
 - Query size and runtime are bounded with `MAX_FIND_LIMIT`, `MAX_SAMPLE_SIZE`, `MAX_INSERT_BATCH_SIZE`, `MAX_RETURN_BYTES`, and `MONGODB_MAX_TIME_MS`.
 - All tool responses pass through `serializeResponse` to enforce a response-size cap.
 
@@ -285,6 +313,8 @@ Why this helps:
 
 - Destructive operations require explicit target confirmation at the server side.
 - Aggregation cannot silently become a write path by default.
+- Cross-namespace aggregation reads and writes cannot bypass the selected profile's resource scope.
+- Broad multi-document writes/deletes require an explicit full-collection confirmation flag.
 - A malformed or overly broad agent request is less likely to overload the backend or flood the LLM context.
 
 This is not redundant with authentication, RBAC, or profile-level checks. Those earlier gates answer **who** can call a tool and **which backend/resource scope** the tool may target. Tool-specific controls answer whether this particular operation is safe enough to execute after authorization has already passed, such as whether a destructive target was explicitly confirmed, whether an aggregation contains write stages, or whether the requested result size is too large.
@@ -301,7 +331,13 @@ Example:
 
 #### Audit And Attribution
 
-Allowed and denied invocations are logged to stderr with the `[MCP-AUDIT]` prefix. Audit events include tool name, required role, allow/deny decision, denial reason, connection profile, transport, session ID or request ID, and caller metadata such as `oid`, `sub`, `tid`, `upn`, and `name`.
+Allowed and denied invocations are logged to stderr with the `[MCP-AUDIT]` prefix followed by a structured JSON object. Audit events include tool name, required role, allow/deny decision, denial reason, connection profile, transport, session ID or request ID, and caller metadata such as `oid`, `sub`, `tid`, `upn`, and `name`.
+
+Example audit line:
+
+```text
+[MCP-AUDIT] {"timestamp":"2026-05-19T00:00:00.000Z","toolName":"find_documents","requiredRole":"read","decision":"allow","connectionProfile":"prod-read","transport":"streamable-http","requestId":"req-123","principal":{"oid":"...","sub":"...","tid":"...","upn":"user@example.com","name":"Example User"}}
+```
 
 Why this helps:
 
@@ -605,5 +641,5 @@ Write example, requiring `ENABLE_WRITE_TOOLS=true`, a caller with write role, an
 
 ### Step 9: Monitor Audit Logs
 
-Watch stderr or centralized logs for `[MCP-AUDIT]` events. These records show which tool was invoked, whether it was allowed or denied, which profile was used, and which caller identity was attached to the request.
+Watch stderr or centralized logs for `[MCP-AUDIT]` events. Each line uses the `[MCP-AUDIT]` prefix followed by structured JSON. These records show which tool was invoked, whether it was allowed or denied, which profile was used, which transport/session/request was involved, and which caller identity was attached to the request when available.
 
