@@ -27,13 +27,21 @@ describe('connectionProfiles', () => {
             DOCUMENTDB_DEV_URI: 'mongodb://localhost:27017/dev',
         });
 
-        expect(resolveConnectionProfile('dev')).toEqual({ kind: 'connectionString', uri: 'mongodb://localhost:27017/dev' });
+        expect(resolveConnectionProfile('dev')).toEqual({
+            kind: 'connectionString',
+            uri: 'mongodb://localhost:27017/dev',
+            appName: undefined,
+        });
     });
 
     it('resolves inline profile URIs', async () => {
         const { resolveConnectionProfile } = await loadProfiles('{"local":{"uri":"mongodb://localhost:27017/local"}}');
 
-        expect(resolveConnectionProfile('local')).toEqual({ kind: 'connectionString', uri: 'mongodb://localhost:27017/local' });
+        expect(resolveConnectionProfile('local')).toEqual({
+            kind: 'connectionString',
+            uri: 'mongodb://localhost:27017/local',
+            appName: undefined,
+        });
     });
 
     it('resolves Entra profiles without connection strings', async () => {
@@ -115,15 +123,11 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
             '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
         );
 
-        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(
-            /Database 'secrets' is not allowed/,
-        );
+        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(/Database 'secrets' is not allowed/);
     });
 
     it('treats an empty allowedDatabases array as explicit deny-all', async () => {
-        const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":[]}}',
-        );
+        const { assertResourceAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake","allowedDatabases":[]}}');
 
         expect(() => assertResourceAllowed('dev', { dbName: 'anything' })).toThrow(
             /Database 'anything' is not allowed.*Allowed databases: \(none\)\./,
@@ -135,9 +139,9 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
             '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}',
         );
 
-        expect(() =>
-            assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' }),
-        ).toThrow(/Collection 'fleet\.vehicles' is not allowed.*Allowed collections in 'fleet': \(none\)\./);
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).toThrow(
+            /Collection 'fleet\.vehicles' is not allowed.*Allowed collections in 'fleet': \(none\)\./,
+        );
     });
 
     it('allows any collection when allowedCollections[db] is omitted', async () => {
@@ -153,9 +157,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
             '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
         );
 
-        expect(() =>
-            assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' }),
-        ).not.toThrow();
+        expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).not.toThrow();
     });
 
     it('rejects a collection not listed in allowedCollections[db]', async () => {
@@ -278,9 +280,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
-        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(
-            /Database 'secrets' is denied/,
-        );
+        expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(/Database 'secrets' is denied/);
     });
 
     it('rejects a collection listed in deniedCollections[db]', async () => {

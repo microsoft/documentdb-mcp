@@ -77,7 +77,7 @@ async function check(name, env, callArgs, assert) {
 const baseEnv = {
     TRANSPORT: 'stdio',
     AUTH_REQUIRED: 'false',
-    ALLOW_UNAUTHENTICATED_STDIO: 'true',
+    TRUST_LOCAL_STDIO: 'true',
     ENABLE_READ_TOOLS: 'true',
     ENABLE_WRITE_TOOLS: 'true',
     ENABLE_MANAGEMENT_TOOLS: 'true',

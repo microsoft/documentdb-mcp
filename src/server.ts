@@ -16,11 +16,12 @@ import { getRequestPrincipal, requireHttpAuthentication } from './security/auth'
 import { createRateLimitMiddleware } from './security/rateLimit';
 import { runWithRequestContext } from './security/requestContext';
 import { registerAllTools } from './tools';
+import { SERVER_NAME, SERVER_VERSION } from './version';
 
 export function createServer(): McpServer {
     const server = new McpServer({
-        name: 'documentdb-mcp-server',
-        version: '0.1.0',
+        name: SERVER_NAME,
+        version: SERVER_VERSION,
     });
 
     // All MCP tools live in `src/tools` as declarative `ToolDefinition` entries.
@@ -32,8 +33,10 @@ export function createServer(): McpServer {
 }
 
 export async function runStdioServer(): Promise<void> {
-    if (config.auth.required && !config.allowUnauthenticatedStdio) {
-        throw new Error('stdio transport is disabled when AUTH_REQUIRED=true. Set ALLOW_UNAUTHENTICATED_STDIO=true only for trusted local development.');
+    if (config.auth.required && !config.trustLocalStdio) {
+        throw new Error(
+            'stdio transport is disabled when AUTH_REQUIRED=true. Set TRUST_LOCAL_STDIO=true only when launched by a trusted local MCP client.',
+        );
     }
 
     const server = createServer();

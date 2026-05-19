@@ -31,7 +31,7 @@ function validCfg(): MCPConfig {
             mongoMaxTimeMs: 30_000,
         },
         connectionProfiles: { dev: { uri: 'mongodb://localhost:27017' } },
-        allowUnauthenticatedStdio: true,
+        trustLocalStdio: true,
     } as MCPConfig;
 }
 

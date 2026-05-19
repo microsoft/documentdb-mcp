@@ -65,7 +65,7 @@ Create or update `.env` for stdio + the local connection profile:
 ```env
 TRANSPORT='stdio'
 AUTH_REQUIRED='false'
-ALLOW_UNAUTHENTICATED_STDIO='true'
+TRUST_LOCAL_STDIO='true'
 
 ENABLE_READ_TOOLS='true'
 ENABLE_WRITE_TOOLS='true'

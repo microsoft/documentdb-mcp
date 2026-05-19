@@ -1,5 +1,5 @@
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?logo=data:image/svg%2bxml;base64,PHN2ZyBmaWxsPSIjRkZGRkZGIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciICB2aWV3Qm94PSIwIDAgNDggNDgiIHdpZHRoPSIyNHB4IiBoZWlnaHQ9IjI0cHgiPjxwYXRoIGQ9Ik00NC45OTkgMTAuODd2MjYuMjFjMCAxLjAzLS41OSAxLjk3LTEuNTEgMi40Mi0yLjY4IDEuMjktOCAzLjg1LTguMzUgNC4wMS0uMTMuMDctLjM4LjItLjY3LjMxLjM1LS42LjUzLTEuMy41My0yLjAyVjYuMmMwLS43NS0uMi0xLjQ1LS41Ni0yLjA2LjA5LjA0LjE3LjA4LjI0LjExLjIuMSA1Ljk4IDIuODYgOC44IDQuMkM0NC40MDkgOC45IDQ0Ljk5OSA5Ljg0IDQ0Ljk5OSAxMC44N3pNNy40OTkgMjYuMDNjMS42IDEuNDYgMy40MyAzLjEzIDUuMzQgNC44NmwtNC42IDMuNWMtLjc3LjU3LTEuNzguNS0yLjU2LS4wNS0uNS0uMzYtMS44OS0xLjY1LTEuODktMS42NS0xLjAxLS44MS0xLjA2LTIuMzItLjExLTMuMTlDMy42NzkgMjkuNSA1LjE3OSAyOC4xMyA3LjQ5OSAyNi4wM3pNMzEuOTk5IDYuMnYxMC4xMWwtNy42MyA1LjgtNi44NS01LjIxYzQuOTgtNC41MyAxMC4wMS05LjExIDEyLjY1LTExLjUyQzMwLjg2OSA0Ljc0IDMxLjk5OSA1LjI1IDMxLjk5OSA2LjJ6TTMyIDQxLjc5OFYzMS42OUw4LjI0IDEzLjYxYy0uNzctLjU3LTEuNzgtLjUtMi41Ni4wNS0uNS4zNi0xLjg5IDEuNjUtMS44OSAxLjY1LTEuMDEuODEtMS4wNiAyLjMyLS4xMSAzLjE5IDAgMCAyMC4xNDUgMTguMzM4IDI2LjQ4NSAyNC4xMTZDMzAuODcxIDQzLjI2IDMyIDQyLjc1MyAzMiA0MS43OTh6Ii8+PC9zdmc+)](https://insiders.vscode.dev/redirect/mcp/install?name=DocumentDB&inputs=%5B%7B%22id%22%3A%22connection_string%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22DocumentDB%20connection%20string%20(e.g.%20mongodb%3A%2F%2Flocalhost%3A27017)%22%7D%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22github%3Amicrosoft%2Fdocumentdb-mcp%22%5D%2C%22env%22%3A%7B%22TRANSPORT%22%3A%22stdio%22%2C%22ALLOW_UNAUTHENTICATED_STDIO%22%3A%22true%22%2C%22CONNECTION_PROFILES%22%3A%22%7B%5C%22local%5C%22%3A%7B%5C%22authMode%5C%22%3A%5C%22connectionString%5C%22%2C%5C%22uri%5C%22%3A%5C%22%24%7Binput%3Aconnection_string%7D%5C%22%7D%7D%22%7D%7D)
-[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-1e1e1e?logo=data:image/svg%2bxml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iCiAgICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICAgPHRpdGxlPkN1cnNvcjwvdGl0bGU+CiAgICA8cGF0aCBkPSJNMTEuOTI1IDI0bDEwLjQyNS02LTEwLjQyNS02TDEuNSAxOGwxMC40MjUgNnoiCiAgICAgICAgZmlsbD0idXJsKCNsb2JlLWljb25zLWN1cnNvcnVuZGVmaW5lZC1maWxsLTApIj48L3BhdGg+CiAgICA8cGF0aCBkPSJNMjIuMzUgMThWNkwxMS45MjUgMHYxMmwxMC40MjUgNnoiIGZpbGw9InVybCgjbG9iZS1pY29ucy1jdXJzb3J1bmRlZmluZWQtZmlsbC0xKSI+PC9wYXRoPgogICAgPHBhdGggZD0iTTExLjkyNSAwTDEuNSA2djEybDEwLjQyNS02VjB6IiBmaWxsPSJ1cmwoI2xvYmUtaWNvbnMtY3Vyc29ydW5kZWZpbmVkLWZpbGwtMikiPjwvcGF0aD4KICAgIDxwYXRoIGQ9Ik0yMi4zNSA2TDExLjkyNSAyNFYxMkwyMi4zNSA2eiIgZmlsbD0iIzU1NSI+PC9wYXRoPgogICAgPHBhdGggZD0iTTIyLjM1IDZsLTEwLjQyNSA2TDEuNSA2aDIwLjg1eiIgZmlsbD0iI2ZmZiI+PC9wYXRoPgogICAgPGRlZnM+CiAgICAgICAgPGxpbmVhckdyYWRpZW50IGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiBpZD0ibG9iZS1pY29ucy1jdXJzb3J1bmRlZmluZWQtZmlsbC0wIgogICAgICAgICAgICB4MT0iMTEuOTI1IiB4Mj0iMTEuOTI1IiB5MT0iMTIiIHkyPSIyNCI+CiAgICAgICAgICAgIDxzdG9wIG9mZnNldD0iLjE2IiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9Ii4zOSI+PC9zdG9wPgogICAgICAgICAgICA8c3RvcCBvZmZzZXQ9Ii42NTgiIHN0b3AtY29sb3I9IiNmZmYiIHN0b3Atb3BhY2l0eT0iLjgiPjwvc3RvcD4KICAgICAgICA8L2xpbmVhckdyYWRpZW50PgogICAgICAgIDxsaW5lYXJHcmFkaWVudCBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgaWQ9ImxvYmUtaWNvbnMtY3Vyc29ydW5kZWZpbmVkLWZpbGwtMSIKICAgICAgICAgICAgeDE9IjIyLjM1IiB4Mj0iMTEuOTI1IiB5MT0iNi4wMzciIHkyPSIxMi4xNSI+CiAgICAgICAgICAgIDxzdG9wIG9mZnNldD0iLjE4MiIgc3RvcC1jb2xvcj0iI2ZmZiIgc3RvcC1vcGFjaXR5PSIuMzEiPjwvc3RvcD4KICAgICAgICAgICAgPHN0b3Agb2Zmc2V0PSIuNzE1IiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9IjAiPjwvc3RvcD4KICAgICAgICA8L2xpbmVhckdyYWRpZW50PgogICAgICAgIDxsaW5lYXJHcmFkaWVudCBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgaWQ9ImxvYmUtaWNvbnMtY3Vyc29ydW5kZWZpbmVkLWZpbGwtMiIKICAgICAgICAgICAgeDE9IjExLjkyNSIgeDI9IjEuNSIgeTE9IjAiIHkyPSIxOCI+CiAgICAgICAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiNmZmYiIHN0b3Atb3BhY2l0eT0iLjYiPjwvc3RvcD4KICAgICAgICAgICAgPHN0b3Agb2Zmc2V0PSIuNjY3IiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9Ii4yMiI+PC9zdG9wPgogICAgICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8L2RlZnM+Cjwvc3ZnPgo=)](https://cursor.com/en-US/install-mcp?name=DocumentDB&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImdpdGh1YjptaWNyb3NvZnQvZG9jdW1lbnRkYi1tY3AiXSwiZW52Ijp7IlRSQU5TUE9SVCI6InN0ZGlvIiwiQUxMT1dfVU5BVVRIRU5USUNBVEVEX1NURElPIjoidHJ1ZSIsIkNPTk5FQ1RJT05fUFJPRklMRVMiOiJ7XCJsb2NhbFwiOntcImF1dGhNb2RlXCI6XCJjb25uZWN0aW9uU3RyaW5nXCIsXCJ1cmlcIjpcIiR7aW5wdXQ6Y29ubmVjdGlvbl9zdHJpbmd9XCJ9fSJ9fQ%3D%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?logo=data:image/svg%2bxml;base64,PHN2ZyBmaWxsPSIjRkZGRkZGIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciICB2aWV3Qm94PSIwIDAgNDggNDgiIHdpZHRoPSIyNHB4IiBoZWlnaHQ9IjI0cHgiPjxwYXRoIGQ9Ik00NC45OTkgMTAuODd2MjYuMjFjMCAxLjAzLS41OSAxLjk3LTEuNTEgMi40Mi0yLjY4IDEuMjktOCAzLjg1LTguMzUgNC4wMS0uMTMuMDctLjM4LjItLjY3LjMxLjM1LS42LjUzLTEuMy41My0yLjAyVjYuMmMwLS43NS0uMi0xLjQ1LS41Ni0yLjA2LjA5LjA0LjE3LjA4LjI0LjExLjIuMSA1Ljk4IDIuODYgOC44IDQuMkM0NC40MDkgOC45IDQ0Ljk5OSA5Ljg0IDQ0Ljk5OSAxMC44N3pNNy40OTkgMjYuMDNjMS42IDEuNDYgMy40MyAzLjEzIDUuMzQgNC44NmwtNC42IDMuNWMtLjc3LjU3LTEuNzguNS0yLjU2LS4wNS0uNS0uMzYtMS44OS0xLjY1LTEuODktMS42NS0xLjAxLS44MS0xLjA2LTIuMzItLjExLTMuMTlDMy42NzkgMjkuNSA1LjE3OSAyOC4xMyA3LjQ5OSAyNi4wM3pNMzEuOTk5IDYuMnYxMC4xMWwtNy42MyA1LjgtNi44NS01LjIxYzQuOTgtNC41MyAxMC4wMS05LjExIDEyLjY1LTExLjUyQzMwLjg2OSA0Ljc0IDMxLjk5OSA1LjI1IDMxLjk5OSA2LjJ6TTMyIDQxLjc5OFYzMS42OUw4LjI0IDEzLjYxYy0uNzctLjU3LTEuNzgtLjUtMi41Ni4wNS0uNS4zNi0xLjg5IDEuNjUtMS44OSAxLjY1LTEuMDEuODEtMS4wNiAyLjMyLS4xMSAzLjE5IDAgMCAyMC4xNDUgMTguMzM4IDI2LjQ4NSAyNC4xMTZDMzAuODcxIDQzLjI2IDMyIDQyLjc1MyAzMiA0MS43OTh6Ii8+PC9zdmc+)](<https://insiders.vscode.dev/redirect/mcp/install?name=DocumentDB&inputs=%5B%7B%22id%22%3A%22connection_string%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22DocumentDB%20connection%20string%20(e.g.%20mongodb%3A%2F%2Flocalhost%3A27017)%22%7D%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22github%3Amicrosoft%2Fdocumentdb-mcp%22%5D%2C%22env%22%3A%7B%22TRANSPORT%22%3A%22stdio%22%2C%22TRUST_LOCAL_STDIO%22%3A%22true%22%2C%22CONNECTION_PROFILES%22%3A%22%7B%5C%22local%5C%22%3A%7B%5C%22authMode%5C%22%3A%5C%22connectionString%5C%22%2C%5C%22uri%5C%22%3A%5C%22%24%7Binput%3Aconnection_string%7D%5C%22%7D%7D%22%7D%7D>)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-1e1e1e?logo=data:image/svg%2bxml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iCiAgICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICAgPHRpdGxlPkN1cnNvcjwvdGl0bGU+CiAgICA8cGF0aCBkPSJNMTEuOTI1IDI0bDEwLjQyNS02LTEwLjQyNS02TDEuNSAxOGwxMC40MjUgNnoiCiAgICAgICAgZmlsbD0idXJsKCNsb2JlLWljb25zLWN1cnNvcnVuZGVmaW5lZC1maWxsLTApIj48L3BhdGg+CiAgICA8cGF0aCBkPSJNMjIuMzUgMThWNkwxMS45MjUgMHYxMmwxMC40MjUgNnoiIGZpbGw9InVybCgjbG9iZS1pY29ucy1jdXJzb3J1bmRlZmluZWQtZmlsbC0xKSI+PC9wYXRoPgogICAgPHBhdGggZD0iTTExLjkyNSAwTDEuNSA2djEybDEwLjQyNS02VjB6IiBmaWxsPSJ1cmwoI2xvYmUtaWNvbnMtY3Vyc29ydW5kZWZpbmVkLWZpbGwtMikiPjwvcGF0aD4KICAgIDxwYXRoIGQ9Ik0yMi4zNSA2TDExLjkyNSAyNFYxMkwyMi4zNSA2eiIgZmlsbD0iIzU1NSI+PC9wYXRoPgogICAgPHBhdGggZD0iTTIyLjM1IDZsLTEwLjQyNSA2TDEuNSA2aDIwLjg1eiIgZmlsbD0iI2ZmZiI+PC9wYXRoPgogICAgPGRlZnM+CiAgICAgICAgPGxpbmVhckdyYWRpZW50IGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiBpZD0ibG9iZS1pY29ucy1jdXJzb3J1bmRlZmluZWQtZmlsbC0wIgogICAgICAgICAgICB4MT0iMTEuOTI1IiB4Mj0iMTEuOTI1IiB5MT0iMTIiIHkyPSIyNCI+CiAgICAgICAgICAgIDxzdG9wIG9mZnNldD0iLjE2IiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9Ii4zOSI+PC9zdG9wPgogICAgICAgICAgICA8c3RvcCBvZmZzZXQ9Ii42NTgiIHN0b3AtY29sb3I9IiNmZmYiIHN0b3Atb3BhY2l0eT0iLjgiPjwvc3RvcD4KICAgICAgICA8L2xpbmVhckdyYWRpZW50PgogICAgICAgIDxsaW5lYXJHcmFkaWVudCBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgaWQ9ImxvYmUtaWNvbnMtY3Vyc29ydW5kZWZpbmVkLWZpbGwtMSIKICAgICAgICAgICAgeDE9IjIyLjM1IiB4Mj0iMTEuOTI1IiB5MT0iNi4wMzciIHkyPSIxMi4xNSI+CiAgICAgICAgICAgIDxzdG9wIG9mZnNldD0iLjE4MiIgc3RvcC1jb2xvcj0iI2ZmZiIgc3RvcC1vcGFjaXR5PSIuMzEiPjwvc3RvcD4KICAgICAgICAgICAgPHN0b3Agb2Zmc2V0PSIuNzE1IiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9IjAiPjwvc3RvcD4KICAgICAgICA8L2xpbmVhckdyYWRpZW50PgogICAgICAgIDxsaW5lYXJHcmFkaWVudCBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgaWQ9ImxvYmUtaWNvbnMtY3Vyc29ydW5kZWZpbmVkLWZpbGwtMiIKICAgICAgICAgICAgeDE9IjExLjkyNSIgeDI9IjEuNSIgeTE9IjAiIHkyPSIxOCI+CiAgICAgICAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiNmZmYiIHN0b3Atb3BhY2l0eT0iLjYiPjwvc3RvcD4KICAgICAgICAgICAgPHN0b3Agb2Zmc2V0PSIuNjY3IiBzdG9wLWNvbG9yPSIjZmZmIiBzdG9wLW9wYWNpdHk9Ii4yMiI+PC9zdG9wPgogICAgICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8L2RlZnM+Cjwvc3ZnPgo=)](https://cursor.com/en-US/install-mcp?name=DocumentDB&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImdpdGh1YjptaWNyb3NvZnQvZG9jdW1lbnRkYi1tY3AiXSwiZW52Ijp7IlRSQU5TUE9SVCI6InN0ZGlvIiwiVFJVU1RfTE9DQUxfU1RESU8iOiJ0cnVlIiwiQ09OTkVDVElPTl9QUk9GSUxFUyI6IntcImxvY2FsXCI6e1wiYXV0aE1vZGVcIjpcImNvbm5lY3Rpb25TdHJpbmdcIixcInVyaVwiOlwiJHtpbnB1dDpjb25uZWN0aW9uX3N0cmluZ31cIn19In19)
 
 # DocumentDB MCP Server
 
@@ -47,7 +47,7 @@ For local development with an MCP client, run the server over stdio with a singl
 Set these environment variables in the client config below to match your environment:
 
 - `TRANSPORT=stdio` — talk to the MCP client over stdio.
-- `ALLOW_UNAUTHENTICATED_STDIO=true` — local stdio is unauthenticated; only enable on a trusted machine.
+- `TRUST_LOCAL_STDIO=true` — trust the local stdio process boundary; only enable when the MCP client launches the server on a trusted machine.
 - `CONNECTION_PROFILES` — a JSON map of administrator-defined profiles. Tools reference one by name via the `connection_profile` argument.
 
 ### Copilot CLI
@@ -62,15 +62,17 @@ Run `/mcp add` interactively, or edit `~/.copilot/mcp-config.json`:
       "args": ["-y", "github:microsoft/documentdb-mcp"],
       "env": {
         "TRANSPORT": "stdio",
-        "ALLOW_UNAUTHENTICATED_STDIO": "true",
-        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}"
+        "AUTH_REQUIRED": "false",
+        "TRUST_LOCAL_STDIO": "true",
+        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}",
+        "DEFAULT_CONNECTION_PROFILE": "local"
       }
     }
   }
 }
 ```
 
-In tool calls, set `connection_profile` to `"local"` (or whatever profile name you defined).
+In local stdio mode, `DEFAULT_CONNECTION_PROFILE` lets tools omit `connection_profile`. If you configure multiple profiles, set `connection_profile` explicitly when you want a non-default cluster.
 
 ### Claude Desktop
 
@@ -84,8 +86,10 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
       "args": ["-y", "github:microsoft/documentdb-mcp"],
       "env": {
         "TRANSPORT": "stdio",
-        "ALLOW_UNAUTHENTICATED_STDIO": "true",
-        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}"
+        "AUTH_REQUIRED": "false",
+        "TRUST_LOCAL_STDIO": "true",
+        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}",
+        "DEFAULT_CONNECTION_PROFILE": "local"
       }
     }
   }
@@ -104,8 +108,10 @@ Add to `settings.json`:
       "args": ["-y", "github:microsoft/documentdb-mcp"],
       "env": {
         "TRANSPORT": "stdio",
-        "ALLOW_UNAUTHENTICATED_STDIO": "true",
-        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}"
+        "AUTH_REQUIRED": "false",
+        "TRUST_LOCAL_STDIO": "true",
+        "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\"}}",
+        "DEFAULT_CONNECTION_PROFILE": "local"
       }
     }
   }
@@ -143,7 +149,9 @@ ENABLE_MANAGEMENT_TOOLS=false
 ALLOW_AGGREGATE_WRITE_STAGES=false
 ```
 
-HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` is unauthenticated and is blocked unless `ALLOW_UNAUTHENTICATED_STDIO=true`; use it only for trusted local development.
+HTTP and SSE transports require a Microsoft Entra bearer token by default. `stdio` has no HTTP bearer-token boundary and is blocked unless `TRUST_LOCAL_STDIO=true`; use it only for trusted local development.
+
+For a local one-connection quickstart, set `TRANSPORT=stdio`, `AUTH_REQUIRED=false`, `TRUST_LOCAL_STDIO=true`, one connection-string profile, and `DEFAULT_CONNECTION_PROFILE=local`. Tools can then omit `connection_profile`.
 
 HTTP and SSE endpoints are rate-limited before token validation. The default is 120 requests per IP per 60 seconds and can be adjusted with the `RATE_LIMIT_*` settings.
 
@@ -202,6 +210,7 @@ az account get-access-token --resource <entra-audience>
 ## Connection Profiles
 
 Connection profiles are administrator-defined and selected by name in tool calls.
+For local stdio, `DEFAULT_CONNECTION_PROFILE` can select one profile automatically. For enterprise HTTP/SSE deployments, require explicit profile selection.
 
 Recommended Entra/OIDC backend profile:
 
@@ -232,28 +241,28 @@ CONNECTION_PROFILES_FILE=/etc/documentdb-mcp/profiles.json
 
 ## Tools
 
-All tools require `connection_profile`.
+All tools use a configured connection profile. HTTP/SSE deployments should pass `connection_profile` explicitly. Local stdio deployments can omit it when `DEFAULT_CONNECTION_PROFILE` is set or only one profile is configured.
 
-| Tool | Role | Purpose |
-| --- | --- | --- |
-| `list_databases` | read | List databases, or collections for one database. |
-| `drop_database` | management | Drop a database and all collections. |
-| `drop_collection` | management | Drop a collection. |
-| `rename_collection` | management | Rename a collection. |
-| `sample_documents` | read | Return sample documents from a collection. |
-| `current_ops` | management | Return current MongoDB operations. |
-| `get_statistics` | read | Return database, collection, or index statistics. |
-| `create_index` | management | Create an index. |
-| `list_indexes` | read | List collection indexes. |
-| `drop_index` | management | Drop an index. |
-| `find_documents` | read | Find documents with query, projection, sort, limit, and skip options. |
-| `count_documents` | read | Count documents matching a query. |
-| `insert_documents` | write | Insert one or more documents. |
-| `update_documents` | write | Update one or many documents. |
-| `delete_documents` | write | Delete one or many documents. |
-| `aggregate` | read | Run an aggregation pipeline. `$out` and `$merge` are disabled unless explicitly enabled. |
-| `find_and_modify` | write | Atomically find and update one document. |
-| `explain_operation` | read | Explain `find`, `count`, or `aggregate` with execution stats. |
+| Tool                | Role       | Purpose                                                                                  |
+| ------------------- | ---------- | ---------------------------------------------------------------------------------------- |
+| `list_databases`    | read       | List databases, or collections for one database.                                         |
+| `drop_database`     | management | Drop a database and all collections.                                                     |
+| `drop_collection`   | management | Drop a collection.                                                                       |
+| `rename_collection` | management | Rename a collection.                                                                     |
+| `sample_documents`  | read       | Return sample documents from a collection.                                               |
+| `current_ops`       | management | Return current MongoDB operations.                                                       |
+| `get_statistics`    | read       | Return database, collection, or index statistics.                                        |
+| `create_index`      | management | Create an index.                                                                         |
+| `list_indexes`      | read       | List collection indexes.                                                                 |
+| `drop_index`        | management | Drop an index.                                                                           |
+| `find_documents`    | read       | Find documents with query, projection, sort, limit, and skip options.                    |
+| `count_documents`   | read       | Count documents matching a query.                                                        |
+| `insert_documents`  | write      | Insert one or more documents.                                                            |
+| `update_documents`  | write      | Update one or many documents.                                                            |
+| `delete_documents`  | write      | Delete one or many documents.                                                            |
+| `aggregate`         | read       | Run an aggregation pipeline. `$out` and `$merge` are disabled unless explicitly enabled. |
+| `find_and_modify`   | write      | Atomically find and update one document.                                                 |
+| `explain_operation` | read       | Explain `find`, `count`, or `aggregate` with execution stats.                            |
 
 ## MCP Client Usage
 
@@ -270,7 +279,7 @@ For trusted local `stdio` testing:
 ```env
 TRANSPORT=stdio
 AUTH_REQUIRED=false
-ALLOW_UNAUTHENTICATED_STDIO=true
+TRUST_LOCAL_STDIO=true
 ```
 
 Then configure the MCP command as:
