@@ -6,12 +6,12 @@ DocumentDB MCP Server is a Model Context Protocol server built for DocumentDB, a
 
 The design supports two deployment models:
 
-- **Local personal MCP server**: a single user runs the MCP server as a local `stdio` child process from a trusted desktop client. This is the common MCP quickstart model. The user can configure one connection-string profile and, when supported by configuration, use it as a default profile so normal tool calls do not need to repeat profile selection.
-- **Enterprise hosted MCP server**: an organization hosts a shared MCP endpoint over `streamable-http` or `sse`. This model requires stronger server-side controls: Entra authentication at the MCP endpoint, MCP role mapping, profile-level backend restrictions, audit logging, and quota/rate limiting.
+- **Local personal MCP server**: a single user runs the MCP server as a local `stdio` child process from a trusted desktop client. This is the common MCP quickstart model. The user can configure one connection-string profile and use it as a default profile so normal tool calls do not need to repeat profile selection.
+- **Enterprise hosted MCP server**: an organization hosts a shared MCP endpoint over `streamable-http` or `sse`. This model requires stronger server-side controls: Entra authentication at the MCP endpoint, MCP role mapping, profile-level backend restrictions, audit logging, rate limiting, and tool-specific size/runtime limits.
 
 Database tools are stateless. They use an administrator-defined connection profile, either explicitly through `connection_profile` or through a local default profile. Tools do not accept raw runtime database connection strings from the AI agent.
 
-At a high level, the MCP server sits between the developer's MCP client and the external DocumentDB cluster. The client decides what tool to call, but the server owns two separate auth boundaries. The first boundary is MCP caller/tool authorization, controlled by `AUTH_REQUIRED` for HTTP/SSE and by the trusted local process boundary for stdio. The second boundary is backend cluster authentication, controlled by the selected connection profile's `authMode` (`connectionString` or `entra`). After those checks, the server applies capability gates, profile scope, operation-level restrictions, quota/rate limits, and only then opens a database connection.
+At a high level, the MCP server sits between the developer's MCP client and the external DocumentDB cluster. The client decides what tool to call, but the server owns two separate auth boundaries. The first boundary is MCP caller/tool authorization, controlled by `AUTH_REQUIRED` for HTTP/SSE and by the trusted local process boundary for stdio. The second boundary is backend cluster authentication, controlled by the selected connection profile's `authMode` (`connectionString` or `entra`). After those checks, the server applies capability gates, profile scope, operation-level restrictions, rate limiting, and tool-specific size/runtime limits, and only then opens a database connection.
 
 ```mermaid
 flowchart LR
@@ -30,13 +30,13 @@ flowchart LR
 
   subgraph Server["DocumentDB MCP server"]
     Auth["If AUTH_REQUIRED=true<br/>Validate caller identity<br/>Map roles/groups/scopes to MCP roles"]
-    Guard["Server-side guard<br/>Capability gates<br/>Profile resolution<br/>DB/collection scope<br/>Tool safety checks<br/>Quota/rate limits<br/>Audit"]
+    Guard["Server-side guard<br/>Capability gates<br/>Profile resolution<br/>DB/collection scope<br/>Tool safety checks<br/>Rate limits<br/>Audit"]
     Telemetry["Telemetry source<br/>MCP server + version + tool name"]
   end
 
   subgraph Profiles["Layer 2: Backend cluster authentication via connection profile"]
-    LocalProfile["authMode=connectionString<br/>Operator-managed shared credential<br/>Local, sandbox, or hosted compatibility"]
-    EntraProfile["authMode=entra<br/>MCP server/runtime identity<br/>DefaultAzureCredential<br/>Managed identity / Azure CLI"]
+    LocalProfile["authMode=connectionString<br/>Operator-managed Azure DocumentDB credential<br/>Supported for stdio, HTTP, and SSE"]
+    EntraProfile["authMode=entra<br/>Optional keyless backend access<br/>MCP server/runtime identity<br/>DefaultAzureCredential"]
     ScopedProfile["Profile restrictions<br/>allowedRoles<br/>allowedDatabases<br/>allowedCollections<br/>allowedHosts"]
   end
 
@@ -117,7 +117,7 @@ In short: use `stdio` for trusted local personal usage, use `streamable-http` as
 There are two separate authentication decisions, and they should not be conflated:
 
 - **MCP endpoint authentication** controls who can call the MCP server and which MCP tool tier they can use. For local `stdio`, this is the trusted local process boundary; stdio does not support the HTTP bearer-token model. For HTTP/SSE, `AUTH_REQUIRED=true` enables Entra bearer-token validation and MCP role mapping. `AUTH_REQUIRED=false` disables only this first layer.
-- **Backend database authentication** controls how the MCP server connects to DocumentDB or a MongoDB-compatible cluster. This is independent of transport and `AUTH_REQUIRED`. Every transport can use profiles with `authMode=connectionString` or `authMode=entra`. In `authMode=entra`, the server uses its runtime identity through Azure Identity / MongoDB OIDC for the profile's configured endpoint; it does not reuse the incoming MCP caller token and cannot connect to clusters not defined in profiles.
+- **Backend database authentication** controls how the MCP server connects to DocumentDB or a MongoDB-compatible cluster. This is independent of transport and `AUTH_REQUIRED`. Every transport can use profiles with `authMode=connectionString` or `authMode=entra`. `authMode=connectionString` is a first-class backend connection mode for Azure DocumentDB and remains the primary/common connection path today, including for hosted HTTP/SSE deployments. In `authMode=entra`, the server uses its runtime identity through Azure Identity / MongoDB OIDC for the profile's configured endpoint; it does not reuse the incoming MCP caller token and cannot connect to clusters not defined in profiles.
 
 ## 3. Security Design
 
@@ -217,9 +217,9 @@ Why this helps:
 
 Every tool uses a connection profile. In enterprise HTTP/SSE usage, tools should provide an explicit `connection_profile`. In trusted local stdio usage, a configured default profile can supply the profile implicitly. Tools do not accept runtime database connection strings from the AI agent or end user.
 
-Profiles are configured by the MCP server administrator through `CONNECTION_PROFILES` or `CONNECTION_PROFILES_FILE`. Production profiles should use `authMode=entra` with MongoDB OIDC and Azure Identity. Connection-string profiles are still supported for local or sandbox use, but they are constrained to administrator-defined profiles rather than being supplied dynamically by the agent.
+Profiles are configured by the MCP server administrator through `CONNECTION_PROFILES` or `CONNECTION_PROFILES_FILE`. Azure DocumentDB commonly uses connection strings today, so `authMode=connectionString` is fully supported for local, sandbox, and hosted HTTP/SSE deployments. `authMode=entra` is also supported when a customer wants keyless backend access through MongoDB OIDC and Azure Identity. In both modes, credentials and endpoints are constrained to administrator-defined profiles rather than being supplied dynamically by the agent.
 
-Connection-string profiles are not transport-limited by startup validation. A hosted HTTP/SSE deployment can use `authMode=connectionString` when required for backend compatibility, but this is a deliberate operator decision: it uses a shared backend credential and therefore has weaker per-user backend attribution than `authMode=entra`.
+Connection-string profiles are not transport-limited by startup validation. A hosted HTTP/SSE deployment can use `authMode=connectionString` as a normal Azure DocumentDB backend connection path. The security boundary for hosted deployments is still the MCP endpoint: Entra validates who can call the MCP server, MCP role mapping controls which tools they may invoke, and profile restrictions control which configured backend resources those tools may reach. Compared with `authMode=entra`, a connection-string profile uses an operator-managed shared backend credential, so backend-side attribution may be coarser even though MCP-side audit still records the caller.
 
 Why this helps:
 
@@ -228,7 +228,7 @@ Why this helps:
 - Customers can document and review the risk of any connection-string profile explicitly.
 - Local users can still get a one-config connection-string quickstart without exposing arbitrary runtime credentials to tool calls.
 
-#### Quota And Rate Limiting
+#### Rate Limiting And Tool Limits
 
 HTTP and SSE transports use request middleware for rate limiting before requests reach the MCP tool layer. The default deployment-level settings are:
 
@@ -238,11 +238,9 @@ RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX_REQUESTS=120
 ```
 
-This protects shared endpoints from accidental high-frequency agent loops and gives operators a coarse quota control for hosted deployments. Tool-specific limits provide an additional layer after authorization, including maximum find/sample sizes, insert batch size, response bytes, and MongoDB `maxTimeMS`.
+This protects shared endpoints from accidental high-frequency agent loops. Tool-specific limits provide an additional layer after authorization, including maximum find/sample sizes, insert batch size, response bytes, and MongoDB `maxTimeMS`.
 
 Current rate-limit semantics are intentionally coarse. HTTP/SSE use the default `express-rate-limit` keying behavior, which is per client IP unless the deployment overrides proxy/IP handling outside this server. Local `stdio` uses a process-local request counter for the configured window. The current limiter is not per Entra `oid`, per profile, or per tool.
-
-Future enterprise quota policies can be layered on the same enforcement point, for example per-caller, per-role, per-profile, or per-tool budgets. The current design already records caller identity, transport, profile, and tool name in audit events so those quota dimensions are observable.
 
 #### Startup Configuration Validation
 
@@ -424,7 +422,7 @@ Expected flow:
 2. The client starts `npx -y github:microsoft/documentdb-mcp` as a local child process with `TRANSPORT=stdio`.
 3. The MCP server trusts the local process boundary instead of validating a per-request Entra bearer token.
 4. The config provides one or more administrator-defined connection profiles, for example a local connection-string profile or an Entra/OIDC backend profile.
-5. The agent invokes tools over stdio. The server still resolves the configured profile, applies global capability gates, profile restrictions, quota/rate limits, and tool-specific safety checks before opening the backend connection.
+5. The agent invokes tools over stdio. The server still resolves the configured profile, applies global capability gates, profile restrictions, rate limiting, and tool-specific safety checks before opening the backend connection.
 
 This scenario is the local quickstart model. It is different from enterprise access control because it does not provide per-request organizational identity at the MCP boundary. Product sign-in state, such as GitHub Copilot sign-in or Claude account sign-in, is between the user and that client product; it is not forwarded to this MCP server as a bearer token over stdio.
 
@@ -452,7 +450,7 @@ Expected flow:
 2. Users or groups are assigned app roles such as `DocumentDB.MCP.Read`, `DocumentDB.MCP.Write`, or `DocumentDB.MCP.Management`.
 3. The MCP client obtains an Entra access token for the MCP server audience and sends it as `Authorization: Bearer <token>`.
 4. The MCP server validates issuer, audience, signature, and expiry, then maps claims to MCP roles.
-5. The server applies global capability gates, profile restrictions, quota/rate limits, and tool-specific safety checks.
+5. The server applies global capability gates, profile restrictions, rate limiting, and tool-specific safety checks.
 6. The backend connection is opened using the selected profile. The profile can use `authMode=connectionString` for clusters that do not support Entra/OIDC, or `authMode=entra` with managed identity/workload identity when available.
 
 This is the model intended for organizational sharing, centralized audit, per-user attribution, and server-side usage tracking.
@@ -495,9 +493,11 @@ PORT=8070
 AUTH_REQUIRED=true
 ```
 
-### Step 3: Configure Entra Application And Service Principal
+### Step 3: Configure Entra Application And Service Principal (Hosted HTTP/SSE Only)
 
 For enterprise HTTP/SSE transports, the MCP server should be represented as an Entra-protected API/application. Local stdio quickstarts do not require this step because there is no HTTP bearer-token boundary.
+
+Skip this step for local `stdio` usage with `AUTH_REQUIRED=false` and `TRUST_LOCAL_STDIO=true`.
 
 The two Entra objects involved are:
 
@@ -518,7 +518,9 @@ ENTRA_AUDIENCE=<application-client-id-or-api-audience>
 
 The MCP client must send an Entra bearer token for this audience when calling HTTP/SSE endpoints. After role assignment, the issued token should contain role values in the `roles` claim.
 
-### Step 4: Create And Assign MCP Roles
+### Step 4: Create And Assign MCP Roles (Hosted HTTP/SSE Only)
+
+Skip this step for local `stdio` usage. Local stdio has no incoming Entra bearer token, so MCP app roles are not used at the caller-auth layer. Backend profiles may still use either `authMode=connectionString` or `authMode=entra`.
 
 Create app roles on the Entra Application / App Registration. The role `value` fields should match the values that the MCP server expects:
 
@@ -559,13 +561,19 @@ ENABLE_MANAGEMENT_TOOLS=true
 
 ### Step 6: Configure Connection Profiles
 
-Recommended production profile using Entra/OIDC:
+Hosted or local profile using an Azure DocumentDB connection string:
+
+```env
+CONNECTION_PROFILES={"prod-read":{"authMode":"connectionString","uriEnv":"DOCUMENTDB_URI","allowedRoles":["read"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}
+```
+
+Optional keyless backend profile using Entra/OIDC:
 
 ```env
 CONNECTION_PROFILES={"prod-read":{"authMode":"entra","endpoint":"prod.mongocluster.cosmos.azure.com","tokenScope":"https://ossrdbms-aad.database.windows.net/.default","allowedHosts":["*.mongocluster.cosmos.azure.com"],"allowedRoles":["read"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}
 ```
 
-Local development profile using a connection string:
+Local development profile using a connection string and default profile:
 
 ```env
 CONNECTION_PROFILES={"local":{"authMode":"connectionString","uri":"mongodb://localhost:27017","allowedRoles":["read"]}}

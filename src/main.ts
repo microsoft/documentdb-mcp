@@ -4,7 +4,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import path from 'path';
 import { config } from './config';
 import { validateConfig } from './security/configValidation';
 import { runServer } from './server';
@@ -37,19 +36,7 @@ async function main(): Promise<void> {
     }
 }
 
-const argvPath = path.resolve(process.argv[1] || '');
-let shouldRun = false;
-
-const currentFile: string | undefined = typeof __filename !== 'undefined' ? path.resolve(__filename) : undefined;
-
-if (currentFile) {
-    shouldRun = argvPath === currentFile;
-} else {
-    // Fallback: if we cannot determine, assume direct run (safer for CLI usage)
-    shouldRun = true;
-}
-
-if (shouldRun) {
+if (require.main === module) {
     main().catch((err) => {
         console.error('Unhandled error in main:', err);
         process.exit(1);

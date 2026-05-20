@@ -24,6 +24,7 @@
     "dev": "tsx src/main.ts",
     "test": "vitest run",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "prepare": "npm run build",
     "prepack": "npm run clean && npm run build",
     "format": "prettier --write ."
   },
