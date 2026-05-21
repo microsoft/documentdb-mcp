@@ -21,6 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const serverEntry = resolve(here, '..', '..', 'dist', 'main.js');
 
 const LOCAL_URI =
+    process.env.DOCUMENTDB_LOCAL_URI ||
     'mongodb://mcpadmin:McpDev%212026@localhost:10260/?tls=true&tlsAllowInvalidCertificates=true&authMechanism=SCRAM-SHA-256';
 
 let pass = 0;
@@ -32,7 +33,7 @@ async function withClient(env, fn) {
         command: process.execPath,
         args: [serverEntry],
         env: { ...process.env, ...env },
-        stderr: 'ignore',
+        stderr: 'inherit',
     });
     const client = new Client({ name: 'e2e-positive', version: '0.0.0' }, { capabilities: {} });
     await client.connect(transport);
@@ -86,16 +87,18 @@ const baseEnv = {
 };
 
 const profileSampleOnly = {
-    CONNECTION_PROFILES: '{"local":{"uriEnv":"DOCUMENTDB_LOCAL_URI","allowedRoles":["read","write","management"],"allowedDatabases":["sampledb"]}}',
+    CONNECTION_PROFILES:
+        '{"local":{"authMode":"connectionString","uriEnv":"DOCUMENTDB_LOCAL_URI","allowedRoles":["read","write","management"],"allowedDatabases":["sampledb"]}}',
 };
 
 const profileSampleProductsOnly = {
     CONNECTION_PROFILES:
-        '{"local":{"uriEnv":"DOCUMENTDB_LOCAL_URI","allowedRoles":["read","write","management"],"allowedDatabases":["sampledb"],"allowedCollections":{"sampledb":["products"]}}}',
+        '{"local":{"authMode":"connectionString","uriEnv":"DOCUMENTDB_LOCAL_URI","allowedRoles":["read","write","management"],"allowedDatabases":["sampledb"],"allowedCollections":{"sampledb":["products"]}}}',
 };
 
 const profileFullOptIn = {
-    CONNECTION_PROFILES: '{"local":{"uriEnv":"DOCUMENTDB_LOCAL_URI","allowedRoles":["read","write","management"]}}',
+    CONNECTION_PROFILES:
+        '{"local":{"authMode":"connectionString","uriEnv":"DOCUMENTDB_LOCAL_URI","allowedRoles":["read","write","management"]}}',
 };
 
 console.log('\n## Baseline read + write smoke\n');
