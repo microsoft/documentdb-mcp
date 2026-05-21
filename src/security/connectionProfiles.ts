@@ -57,11 +57,11 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
                 `Connection profile '${profileName}' references unset environment variable '${profile.uriEnv}'.`,
             );
         }
-        return { kind: 'connectionString', uri };
+        return { kind: 'connectionString', uri, appName: profile.appName };
     }
 
     if (profile.authMode === 'connectionString' && profile.uri) {
-        return { kind: 'connectionString', uri: profile.uri };
+        return { kind: 'connectionString', uri: profile.uri, appName: profile.appName };
     }
 
     throw new Error(`Connection profile '${profileName}' must define authMode='entra' or authMode='connectionString'.`);

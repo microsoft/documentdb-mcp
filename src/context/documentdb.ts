@@ -10,6 +10,7 @@ export type DocumentDBConnectionConfig =
     | {
           kind: 'connectionString';
           uri: string;
+            appName?: string;
       }
     | {
           kind: 'entra';
@@ -26,7 +27,9 @@ const azureCredential = new DefaultAzureCredential();
 
 function createDocumentDBClient(connection: DocumentDBConnectionConfig): MongoClient {
     if (connection.kind === 'connectionString') {
-        return new MongoClient(connection.uri);
+        return connection.appName
+            ? new MongoClient(connection.uri, { appName: connection.appName })
+            : new MongoClient(connection.uri);
     }
 
     const options: MongoClientOptions = {

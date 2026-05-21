@@ -10,6 +10,7 @@ import {
 } from '../../security/connectionProfiles';
 import { assertStdioRateLimit } from '../../security/rateLimit';
 import { getRequestContext, runWithRequestContext } from '../../security/requestContext';
+import { SERVER_NAME, SERVER_VERSION } from '../../version';
 import { assertFullCollectionOpAllowed } from './fullCollectionGuard';
 import { assertPipelineNamespacesAllowed } from './pipelineNamespaces';
 import { type SecureToolInput, type ToolSecurityPolicy } from './toolSecurity';
@@ -65,6 +66,12 @@ function normalizeBoolean(raw: unknown): unknown {
     return raw;
 }
 
+function buildTelemetryAppName(toolName: string, profileAppName: string | undefined): string {
+    const telemetry = `${SERVER_NAME}/${SERVER_VERSION} tool/${toolName}`;
+    const appName = profileAppName ? `${profileAppName} ${telemetry}` : telemetry;
+    return appName.length <= 128 ? appName : appName.slice(0, 128);
+}
+
 export function withDbGuard<Inp extends SecureToolInput>(
     policy: ToolSecurityPolicy,
     handler: (input: Inp, client: MongoClient) => Promise<any> | any,
@@ -96,6 +103,7 @@ export function withDbGuard<Inp extends SecureToolInput>(
             assertCapabilityEnabled(policy.requiredRole);
             assertAuthorized(policy.requiredRole);
             const connection = resolveConnectionProfile(connectionProfile);
+            connection.appName = buildTelemetryAppName(policy.toolName, connection.appName);
             // Enforce per-profile capability tier (allowedRoles).
             // Profiles with no role/capability config pass through unchanged.
             assertProfileCapabilityAllowed(connectionProfile, policy.requiredRole);
