@@ -9,7 +9,11 @@ function endpointToMongoUri(endpoint: string, tls: boolean | undefined): string 
     return `mongodb+srv://${endpoint}/${query ? `?${query}` : ''}`;
 }
 
-function normalizedTokenScope(profileName: string, tokenResource: string | undefined, tokenScope: string | undefined): string {
+function normalizedTokenScope(
+    profileName: string,
+    tokenResource: string | undefined,
+    tokenScope: string | undefined,
+): string {
     const configuredScope = tokenScope || tokenResource;
     if (!configuredScope) {
         throw new Error(
@@ -30,7 +34,9 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
 
     if (profile.authMode === 'entra') {
         if (!profile.endpoint && !profile.uri) {
-            throw new Error(`Connection profile '${profileName}' uses Entra authentication and must define endpoint or uri.`);
+            throw new Error(
+                `Connection profile '${profileName}' uses Entra authentication and must define endpoint or uri.`,
+            );
         }
         return {
             kind: 'entra',
@@ -106,10 +112,7 @@ export function getProfileScope(profileName: string): ProfileScope {
  *
  * Fails closed with an actionable error so callers get a clear message instead of a backend permission error.
  */
-export function assertResourceAllowed(
-    profileName: string,
-    target: { dbName?: string; collectionName?: string },
-): void {
+export function assertResourceAllowed(profileName: string, target: { dbName?: string; collectionName?: string }): void {
     const profile = config.connectionProfiles[profileName];
     if (!profile) {
         // resolveConnectionProfile will surface the unknown-profile error; nothing to enforce here.
@@ -121,9 +124,7 @@ export function assertResourceAllowed(
 
     // Denylists run first — deny wins.
     if (dbName && deniedDatabases && deniedDatabases.includes(dbName)) {
-        throw new Error(
-            `Database '${dbName}' is denied for connection profile '${profileName}'.`,
-        );
+        throw new Error(`Database '${dbName}' is denied for connection profile '${profileName}'.`);
     }
     if (dbName && collectionName && deniedCollections) {
         const deniedPerDb = deniedCollections[dbName];

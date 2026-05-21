@@ -10,8 +10,7 @@ function resetEnv(overrides: NodeJS.ProcessEnv = {}) {
         ENABLE_READ_TOOLS: 'true',
         ENABLE_WRITE_TOOLS: 'false',
         ENABLE_MANAGEMENT_TOOLS: 'false',
-        CONNECTION_PROFILES:
-            '{"dev":{"uri":"mongodb://localhost:27017","allowedRoles":["read","write","management"]}}',
+        CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://localhost:27017","allowedRoles":["read","write","management"]}}',
         ...overrides,
     };
 }
@@ -69,9 +68,108 @@ describe('withDbGuard', () => {
 
         expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }] });
         expect(withClient).toHaveBeenCalledWith(
-            { kind: 'connectionString', uri: 'mongodb://localhost:27017' },
+            {
+                kind: 'connectionString',
+                uri: 'mongodb://localhost:27017',
+            },
             expect.any(Function),
         );
+        expect(handler).toHaveBeenCalledWith({ connection_profile: 'dev' }, fakeClient);
+    });
+
+    it('uses DEFAULT_CONNECTION_PROFILE for local stdio calls that omit connection_profile', async () => {
+        resetEnv({ TRANSPORT: 'stdio', DEFAULT_CONNECTION_PROFILE: 'dev' });
+        const fakeClient = { db: vi.fn() };
+        const withClient = vi.fn(async (_connection: unknown, callback: (client: unknown) => unknown) =>
+            callback(fakeClient),
+        );
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }] }));
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({});
+
+        expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+        expect(handler).toHaveBeenCalledWith({ connection_profile: 'dev' }, fakeClient);
+    });
+
+    it('records stdio transport in audit events for local stdio calls', async () => {
+        resetEnv({ TRANSPORT: 'stdio', DEFAULT_CONNECTION_PROFILE: 'dev' });
+        const fakeClient = { db: vi.fn() };
+        const withClient = vi.fn(async (_connection: unknown, callback: (client: unknown) => unknown) =>
+            callback(fakeClient),
+        );
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, async () => ({
+            content: [{ type: 'text', text: 'ok' }],
+        }));
+
+        const result = await guarded({});
+
+        expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+        const auditLine = stderr.mock.calls
+            .map(([message]) => String(message))
+            .find((message) => message.startsWith('[MCP-AUDIT] '));
+        expect(auditLine).toBeDefined();
+        const audit = JSON.parse(auditLine!.replace('[MCP-AUDIT] ', ''));
+        expect(audit).toMatchObject({
+            toolName: 'find_documents',
+            decision: 'allow',
+            connectionProfile: 'dev',
+            transport: 'stdio',
+        });
+    });
+
+    it('rate limits local stdio tool calls before opening a backend connection', async () => {
+        resetEnv({
+            TRANSPORT: 'stdio',
+            DEFAULT_CONNECTION_PROFILE: 'dev',
+            RATE_LIMIT_ENABLED: 'true',
+            RATE_LIMIT_WINDOW_MS: '60000',
+            RATE_LIMIT_MAX_REQUESTS: '1',
+        });
+        const fakeClient = { db: vi.fn() };
+        const withClient = vi.fn(async (_connection: unknown, callback: (client: unknown) => unknown) =>
+            callback(fakeClient),
+        );
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }] }));
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        expect(await guarded({})).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+        const limited = await guarded({});
+
+        expect(limited.isError).toBe(true);
+        expect(limited.content[0].text).toContain('Too many requests. Please retry later.');
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(withClient).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses the sole stdio profile as the default when DEFAULT_CONNECTION_PROFILE is unset', async () => {
+        resetEnv({ TRANSPORT: 'stdio' });
+        const fakeClient = { db: vi.fn() };
+        const withClient = vi.fn(async (_connection: unknown, callback: (client: unknown) => unknown) =>
+            callback(fakeClient),
+        );
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }] }));
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({});
+
+        expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }] });
         expect(handler).toHaveBeenCalledWith({ connection_profile: 'dev' }, fakeClient);
     });
 

@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { validateConfig } from '../../src/security/configValidation';
 import type { MCPConfig } from '../../src/config';
+import { validateConfig } from '../../src/security/configValidation';
 
 const originalEnv = { ...process.env };
 
@@ -31,7 +31,8 @@ function baseConfig(overrides: Partial<MCPConfig> = {}): MCPConfig {
             mongoMaxTimeMs: 30_000,
         },
         connectionProfiles: { dev: { uri: 'mongodb://localhost:27017' } },
-        allowUnauthenticatedStdio: true,
+        defaultConnectionProfile: '',
+        trustLocalStdio: true,
         ...overrides,
     } as MCPConfig;
 }
@@ -92,13 +93,31 @@ describe('validateConfig', () => {
                 ),
             ).not.toThrow();
         });
+
+        it('accepts DEFAULT_CONNECTION_PROFILE for stdio when the profile exists', () => {
+            expect(() => validateConfig(baseConfig({ defaultConnectionProfile: 'dev' }))).not.toThrow();
+        });
+    });
+
+    describe('default connection profile', () => {
+        it('rejects DEFAULT_CONNECTION_PROFILE for non-stdio transports', () => {
+            expect(() =>
+                validateConfig(baseConfig({ transport: 'streamable-http', defaultConnectionProfile: 'dev' })),
+            ).toThrow(/DEFAULT_CONNECTION_PROFILE is only supported for local stdio transport/);
+        });
+
+        it('rejects DEFAULT_CONNECTION_PROFILE when the profile name is unknown', () => {
+            expect(() => validateConfig(baseConfig({ defaultConnectionProfile: 'missing' }))).toThrow(
+                /does not match a configured connection profile/,
+            );
+        });
     });
 
     describe('transport', () => {
         it('rejects an unknown transport', () => {
-            expect(() =>
-                validateConfig(baseConfig({ transport: 'websocket' as any })),
-            ).toThrow(/TRANSPORT='websocket' is invalid/);
+            expect(() => validateConfig(baseConfig({ transport: 'websocket' as any }))).toThrow(
+                /TRANSPORT='websocket' is invalid/,
+            );
         });
     });
 
@@ -117,16 +136,12 @@ describe('validateConfig', () => {
     describe('rate limit', () => {
         it('rejects NaN windowMs', () => {
             expect(() =>
-                validateConfig(
-                    baseConfig({ rateLimit: { enabled: true, windowMs: NaN, maxRequests: 10 } }),
-                ),
+                validateConfig(baseConfig({ rateLimit: { enabled: true, windowMs: NaN, maxRequests: 10 } })),
             ).toThrow(/RATE_LIMIT_WINDOW_MS=NaN/);
         });
         it('rejects non-positive maxRequests', () => {
             expect(() =>
-                validateConfig(
-                    baseConfig({ rateLimit: { enabled: true, windowMs: 60_000, maxRequests: 0 } }),
-                ),
+                validateConfig(baseConfig({ rateLimit: { enabled: true, windowMs: 60_000, maxRequests: 0 } })),
             ).toThrow(/RATE_LIMIT_MAX_REQUESTS=0/);
         });
     });
@@ -134,16 +149,12 @@ describe('validateConfig', () => {
     describe('auth cross-field', () => {
         it('rejects AUTH_REQUIRED=true without tenantId', () => {
             expect(() =>
-                validateConfig(
-                    baseConfig({ auth: { required: true, tenantId: '', audience: 'aud' } }),
-                ),
+                validateConfig(baseConfig({ auth: { required: true, tenantId: '', audience: 'aud' } })),
             ).toThrow(/AUTH_REQUIRED=true requires ENTRA_TENANT_ID/);
         });
         it('rejects AUTH_REQUIRED=true without audience', () => {
             expect(() =>
-                validateConfig(
-                    baseConfig({ auth: { required: true, tenantId: 'tid', audience: '' } }),
-                ),
+                validateConfig(baseConfig({ auth: { required: true, tenantId: 'tid', audience: '' } })),
             ).toThrow(/AUTH_REQUIRED=true requires ENTRA_AUDIENCE/);
         });
         it('does not require ENTRA_* when AUTH_REQUIRED=false', () => {
@@ -155,9 +166,9 @@ describe('validateConfig', () => {
 
     describe('profile shape', () => {
         it('rejects a non-object profile', () => {
-            expect(() =>
-                validateConfig(baseConfig({ connectionProfiles: { broken: null as any } })),
-            ).toThrow(/Connection profile 'broken' must be a JSON object/);
+            expect(() => validateConfig(baseConfig({ connectionProfiles: { broken: null as any } }))).toThrow(
+                /Connection profile 'broken' must be a JSON object/,
+            );
         });
         it('rejects an unknown authMode', () => {
             expect(() =>

@@ -17,6 +17,7 @@ function setEnv(overrides: NodeJS.ProcessEnv = {}) {
         'MAX_INSERT_BATCH_SIZE',
         'MAX_RETURN_BYTES',
         'MONGODB_MAX_TIME_MS',
+        'DEFAULT_CONNECTION_PROFILE',
     ]) {
         delete cleaned[key];
     }
@@ -99,5 +100,22 @@ describe('config.limits', () => {
     it('rejects non-numeric limit values', async () => {
         setEnv({ MAX_RETURN_BYTES: 'abc' });
         await expect(loadConfig()).rejects.toThrow(/MAX_RETURN_BYTES must be a positive integer/);
+    });
+});
+
+describe('config.defaultConnectionProfile', () => {
+    beforeEach(() => setEnv());
+
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.resetModules();
+    });
+
+    it('reads DEFAULT_CONNECTION_PROFILE when set', async () => {
+        setEnv({ DEFAULT_CONNECTION_PROFILE: 'dev' });
+
+        const cfg = await loadConfig();
+
+        expect(cfg.defaultConnectionProfile).toBe('dev');
     });
 });

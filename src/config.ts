@@ -98,7 +98,8 @@ export interface MCPConfig {
         mongoMaxTimeMs: number;
     };
     connectionProfiles: Record<string, ConnectionProfileConfig>;
-    allowUnauthenticatedStdio: boolean;
+    defaultConnectionProfile: string;
+    trustLocalStdio: boolean;
 }
 
 function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
@@ -215,14 +216,11 @@ export const config: MCPConfig = {
     limits: {
         maxFindLimit: parseBoundedPositiveInt(process.env.MAX_FIND_LIMIT, 100, 'MAX_FIND_LIMIT'),
         maxSampleSize: parseBoundedPositiveInt(process.env.MAX_SAMPLE_SIZE, 50, 'MAX_SAMPLE_SIZE'),
-        maxInsertBatchSize: parseBoundedPositiveInt(
-            process.env.MAX_INSERT_BATCH_SIZE,
-            100,
-            'MAX_INSERT_BATCH_SIZE',
-        ),
+        maxInsertBatchSize: parseBoundedPositiveInt(process.env.MAX_INSERT_BATCH_SIZE, 100, 'MAX_INSERT_BATCH_SIZE'),
         maxReturnBytes: parseBoundedPositiveInt(process.env.MAX_RETURN_BYTES, 1_048_576, 'MAX_RETURN_BYTES'),
         mongoMaxTimeMs: parseBoundedPositiveInt(process.env.MONGODB_MAX_TIME_MS, 30_000, 'MONGODB_MAX_TIME_MS'),
     },
     connectionProfiles: parseConnectionProfiles(process.env.CONNECTION_PROFILES, process.env.CONNECTION_PROFILES_FILE),
-    allowUnauthenticatedStdio: parseBoolean(process.env.ALLOW_UNAUTHENTICATED_STDIO, false),
+    defaultConnectionProfile: process.env.DEFAULT_CONNECTION_PROFILE || '',
+    trustLocalStdio: parseBoolean(process.env.TRUST_LOCAL_STDIO, false),
 };

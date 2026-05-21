@@ -30,7 +30,7 @@ export function getPrincipalEffectiveRole(): ToolRole | undefined {
 }
 
 export function assertAuthorized(requiredRole: ToolRole): void {
-    if (!config.auth.required || (config.transport === 'stdio' && config.allowUnauthenticatedStdio)) {
+    if (!config.auth.required || (config.transport === 'stdio' && config.trustLocalStdio)) {
         return;
     }
     const effectiveRole = getPrincipalEffectiveRole();
