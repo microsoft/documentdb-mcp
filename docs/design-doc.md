@@ -283,7 +283,7 @@ For local development:
 
 ```env
 TRANSPORT=stdio
-ALLOW_UNAUTHENTICATED_STDIO=true
+TRUST_LOCAL_STDIO=true
 ```
 
 For shared or production-style deployment:
@@ -383,7 +383,7 @@ Example VS Code MCP configuration for local stdio:
       "args": ["-y", "github:microsoft/documentdb-mcp"],
       "env": {
         "TRANSPORT": "stdio",
-        "ALLOW_UNAUTHENTICATED_STDIO": "true",
+        "TRUST_LOCAL_STDIO": "true",
         "CONNECTION_PROFILES": "{\"local\":{\"authMode\":\"connectionString\",\"uri\":\"mongodb://localhost:27017\",\"allowedRoles\":[\"read\"]}}"
       }
     }
