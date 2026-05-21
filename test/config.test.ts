@@ -4,7 +4,7 @@ const originalEnv = { ...process.env };
 
 const minimalEnv: NodeJS.ProcessEnv = {
     AUTH_REQUIRED: 'false',
-    CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://localhost:27017"}}',
+    CONNECTION_PROFILES: '{"dev":{"authMode":"connectionString","uri":"mongodb://localhost:27017"}}',
 };
 
 function setEnv(overrides: NodeJS.ProcessEnv = {}) {

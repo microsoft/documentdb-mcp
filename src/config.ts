@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 export type ToolRole = 'read' | 'write' | 'management';
 
 export interface ConnectionProfileConfig {
-    authMode?: 'connectionString' | 'entra';
+    authMode: 'connectionString' | 'entra';
     uri?: string;
     uriEnv?: string;
     endpoint?: string;

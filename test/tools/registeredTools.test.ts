@@ -106,7 +106,7 @@ async function setupRegisteredTools(extraEnv: Record<string, string> = {}) {
         ...originalEnv,
         AUTH_REQUIRED: 'false',
         CONNECTION_PROFILES:
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"]}}',
         ENABLE_READ_TOOLS: 'true',
         ENABLE_WRITE_TOOLS: 'true',
         ENABLE_MANAGEMENT_TOOLS: 'true',
@@ -669,7 +669,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
     });
 
     const allowlistedProfile =
-        '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+        '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
 
     it('rejects a tool call targeting a database outside allowedDatabases', async () => {
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlistedProfile });
@@ -732,7 +732,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
 
     it('list_databases filters out non-allowed databases when no db_name is given', async () => {
         const allowlist =
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"]}}';
         const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlist });
 
         const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
@@ -744,7 +744,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
     it('list_databases hides a database that is not in allowedDatabases', async () => {
         // Allow only a non-existent db so the fake's 'fleet' entry is filtered out.
         const allowlist =
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["other"]}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["other"]}}';
         const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlist });
 
         const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
@@ -755,7 +755,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
     it('list_databases (per-db branch) filters collections outside allowedCollections', async () => {
         // Allow the 'fleet' db but only the 'maintenance' collection — fake returns only 'vehicles' so result is empty.
         const allowlist =
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["maintenance"]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["maintenance"]}}}';
         const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: allowlist });
 
         const response = parseToolResult(
@@ -781,7 +781,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
 
     it('treats allowedDatabases:[] as explicit deny-all at the wiring layer', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":[]}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":[]}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.find_documents.handler({
@@ -800,7 +800,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
 
     it('treats allowedCollections[db]:[] as explicit deny-all at the wiring layer', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.count_documents.handler({
@@ -818,7 +818,7 @@ describe('registered DocumentDB tools — per-profile resource allowlists', () =
     });
 
     it('list_databases returns empty when allowedDatabases:[] (deny-all)', async () => {
-        const profiles = '{"dev":{"uri":"mongodb://fake","allowedDatabases":[]}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":[]}}';
         const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const response = parseToolResult(await tools.list_databases.handler({ connection_profile: 'dev' }));
@@ -835,7 +835,7 @@ describe('registered DocumentDB tools — per-profile capability tier restrictio
     });
 
     it('rejects a write tool when allowedRoles excludes write', async () => {
-        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":["read"]}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read"]}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.insert_documents.handler({
@@ -852,7 +852,7 @@ describe('registered DocumentDB tools — per-profile capability tier restrictio
     });
 
     it('rejects a management tool when allowedRoles excludes management', async () => {
-        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write"]}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write"]}}';
         const { tools } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.drop_collection.handler({
@@ -867,7 +867,7 @@ describe('registered DocumentDB tools — per-profile capability tier restrictio
     });
 
     it('allows a read tool when allowedRoles=["read"]', async () => {
-        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":["read"]}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read"]}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const response = await tools.find_documents.handler({
@@ -883,7 +883,7 @@ describe('registered DocumentDB tools — per-profile capability tier restrictio
 
     it('defaults to read-only when no allowedRoles is configured', async () => {
         // Override the test scaffolding's permissive default with a profile that omits allowedRoles entirely.
-        const profiles = '{"dev":{"uri":"mongodb://fake"}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         // Read tool succeeds.
@@ -909,7 +909,7 @@ describe('registered DocumentDB tools — per-profile capability tier restrictio
     });
 
     it('treats allowedRoles:[] as explicit deny-all (denies even read tools)', async () => {
-        const profiles = '{"dev":{"uri":"mongodb://fake","allowedRoles":[]}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":[]}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.find_documents.handler({
@@ -936,7 +936,7 @@ describe('registered DocumentDB tools — per-profile resource denylists (deny w
 
     it('rejects a tool call targeting a denied database', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedDatabases":["secrets"]}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedDatabases":["secrets"]}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.find_documents.handler({
@@ -953,7 +953,7 @@ describe('registered DocumentDB tools — per-profile resource denylists (deny w
 
     it('rejects a tool call targeting a denied collection', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.count_documents.handler({
@@ -969,7 +969,7 @@ describe('registered DocumentDB tools — per-profile resource denylists (deny w
     });
 
     it('list_databases hides a denied database from the response', async () => {
-        const profiles = '{"dev":{"uri":"mongodb://fake","deniedDatabases":["secrets"]}}';
+        const profiles = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedDatabases":["secrets"]}}';
         const { tools, database } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
         (database as any).admin = () => ({
             listDatabases: vi.fn(async () => ({
@@ -995,7 +995,7 @@ describe('registered DocumentDB tools — pipeline namespace enforcement', () =>
 
     it('aggregate rejects a pipeline whose $lookup.from is outside the collection allowlist', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.aggregate.handler({
@@ -1014,7 +1014,7 @@ describe('registered DocumentDB tools — pipeline namespace enforcement', () =>
 
     it('aggregate rejects a $unionWith targeting a denied collection', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"deniedCollections":{"fleet":["audit_log"]}}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.aggregate.handler({
@@ -1033,7 +1033,7 @@ describe('registered DocumentDB tools — pipeline namespace enforcement', () =>
 
     it('aggregate rejects a cross-database $lookup when target db is not allowed', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"]}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"]}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.aggregate.handler({
@@ -1052,7 +1052,7 @@ describe('registered DocumentDB tools — pipeline namespace enforcement', () =>
 
     it('aggregate allows a pipeline whose namespaces are all in scope', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}';
         const { tools, collection } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.aggregate.handler({
@@ -1068,7 +1068,7 @@ describe('registered DocumentDB tools — pipeline namespace enforcement', () =>
 
     it('explain_operation also walks pipeline namespaces for operation=aggregate', async () => {
         const profiles =
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"],"allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}';
         const { tools, database } = await setupRegisteredTools({ CONNECTION_PROFILES: profiles });
 
         const result = await tools.explain_operation.handler({

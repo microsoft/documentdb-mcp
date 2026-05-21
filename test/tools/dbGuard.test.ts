@@ -10,7 +10,7 @@ function resetEnv(overrides: NodeJS.ProcessEnv = {}) {
         ENABLE_READ_TOOLS: 'true',
         ENABLE_WRITE_TOOLS: 'false',
         ENABLE_MANAGEMENT_TOOLS: 'false',
-        CONNECTION_PROFILES: '{"dev":{"uri":"mongodb://localhost:27017","allowedRoles":["read","write","management"]}}',
+        CONNECTION_PROFILES: '{"dev":{"authMode":"connectionString","uri":"mongodb://localhost:27017","allowedRoles":["read","write","management"]}}',
         ...overrides,
     };
 }

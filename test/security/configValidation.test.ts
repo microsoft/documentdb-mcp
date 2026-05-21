@@ -30,7 +30,7 @@ function baseConfig(overrides: Partial<MCPConfig> = {}): MCPConfig {
             maxReturnBytes: 1_048_576,
             mongoMaxTimeMs: 30_000,
         },
-        connectionProfiles: { dev: { uri: 'mongodb://localhost:27017' } },
+        connectionProfiles: { dev: { authMode: 'connectionString', uri: 'mongodb://localhost:27017' } },
         defaultConnectionProfile: '',
         trustLocalStdio: true,
         ...overrides,
@@ -88,7 +88,7 @@ describe('validateConfig', () => {
             expect(() =>
                 validateConfig(
                     baseConfig({
-                        connectionProfiles: { dev: { uriEnv: 'DEV_URI' } },
+                        connectionProfiles: { dev: { authMode: 'connectionString', uriEnv: 'DEV_URI' } },
                     }),
                 ),
             ).not.toThrow();
@@ -181,6 +181,17 @@ describe('validateConfig', () => {
                 ),
             ).toThrow(/invalid authMode='oauth'/);
         });
+        it('rejects a missing authMode', () => {
+            expect(() =>
+                validateConfig(
+                    baseConfig({
+                        connectionProfiles: {
+                            dev: { uri: 'mongodb://x' } as any,
+                        },
+                    }),
+                ),
+            ).toThrow(/must define authMode='entra' or authMode='connectionString'/);
+        });
         it('with invalid authMode, does not also emit a contradictory uri/uriEnv error', () => {
             // Profile has invalid authMode AND no uri/uriEnv. Pre-fix this produced two
             // contradictory errors; we now want exactly one — the authMode message —
@@ -196,7 +207,7 @@ describe('validateConfig', () => {
             } catch (error) {
                 const message = (error as Error).message;
                 expect(message).toMatch(/invalid authMode='oauth'/);
-                expect(message).not.toMatch(/must define authMode=entra, uri, or uriEnv/);
+                expect(message).not.toMatch(/uses connectionString authentication/);
                 expect(message).toMatch(/Found 1 problem\(s\)/);
             }
         });
@@ -258,14 +269,14 @@ describe('validateConfig', () => {
                         connectionProfiles: { dev: { authMode: 'connectionString' } as any },
                     }),
                 ),
-            ).toThrow(/must define authMode=entra, uri, or uriEnv/);
+            ).toThrow(/uses connectionString authentication and must define uri or uriEnv/);
         });
         it('rejects uriEnv when the referenced env var is unset', () => {
             delete process.env.MISSING_URI;
             expect(() =>
                 validateConfig(
                     baseConfig({
-                        connectionProfiles: { dev: { uriEnv: 'MISSING_URI' } },
+                        connectionProfiles: { dev: { authMode: 'connectionString', uriEnv: 'MISSING_URI' } },
                     }),
                 ),
             ).toThrow(/'MISSING_URI', which is not set/);
@@ -278,7 +289,11 @@ describe('validateConfig', () => {
                 validateConfig(
                     baseConfig({
                         connectionProfiles: {
-                            dev: { uri: 'mongodb://x', allowedDatabases: 'fleet' as any },
+                            dev: {
+                                authMode: 'connectionString',
+                                uri: 'mongodb://x',
+                                allowedDatabases: 'fleet' as any,
+                            },
                         },
                     }),
                 ),
@@ -289,7 +304,11 @@ describe('validateConfig', () => {
                 validateConfig(
                     baseConfig({
                         connectionProfiles: {
-                            dev: { uri: 'mongodb://x', allowedCollections: ['vehicles'] as any },
+                            dev: {
+                                authMode: 'connectionString',
+                                uri: 'mongodb://x',
+                                allowedCollections: ['vehicles'] as any,
+                            },
                         },
                     }),
                 ),
@@ -314,7 +333,11 @@ describe('validateConfig', () => {
                 validateConfig(
                     baseConfig({
                         connectionProfiles: {
-                            dev: { uri: 'mongodb://x', allowedRoles: ['read', 'admin'] as any },
+                            dev: {
+                                authMode: 'connectionString',
+                                uri: 'mongodb://x',
+                                allowedRoles: ['read', 'admin'] as any,
+                            },
                         },
                     }),
                 ),
@@ -325,7 +348,11 @@ describe('validateConfig', () => {
                 validateConfig(
                     baseConfig({
                         connectionProfiles: {
-                            dev: { uri: 'mongodb://x', deniedDatabases: 'secrets' as any },
+                            dev: {
+                                authMode: 'connectionString',
+                                uri: 'mongodb://x',
+                                deniedDatabases: 'secrets' as any,
+                            },
                         },
                     }),
                 ),
@@ -337,6 +364,7 @@ describe('validateConfig', () => {
                     baseConfig({
                         connectionProfiles: {
                             dev: {
+                                authMode: 'connectionString',
                                 uri: 'mongodb://x',
                                 allowedDatabases: [],
                                 allowedRoles: [],

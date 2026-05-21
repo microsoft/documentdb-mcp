@@ -23,7 +23,7 @@ describe('connectionProfiles', () => {
     });
 
     it('resolves profiles from environment variable references', async () => {
-        const { resolveConnectionProfile } = await loadProfiles('{"dev":{"uriEnv":"DOCUMENTDB_DEV_URI"}}', {
+        const { resolveConnectionProfile } = await loadProfiles('{"dev":{"authMode":"connectionString","uriEnv":"DOCUMENTDB_DEV_URI"}}', {
             DOCUMENTDB_DEV_URI: 'mongodb://localhost:27017/dev',
         });
 
@@ -35,7 +35,9 @@ describe('connectionProfiles', () => {
     });
 
     it('resolves inline profile URIs', async () => {
-        const { resolveConnectionProfile } = await loadProfiles('{"local":{"uri":"mongodb://localhost:27017/local"}}');
+        const { resolveConnectionProfile } = await loadProfiles(
+            '{"local":{"authMode":"connectionString","uri":"mongodb://localhost:27017/local"}}',
+        );
 
         expect(resolveConnectionProfile('local')).toEqual({
             kind: 'connectionString',
@@ -75,15 +77,18 @@ describe('connectionProfiles', () => {
     });
 
     it('rejects unknown profiles', async () => {
-        const { resolveConnectionProfile } = await loadProfiles('{"dev":{"uri":"mongodb://localhost:27017"}}');
+        const { resolveConnectionProfile } = await loadProfiles('{"dev":{"authMode":"connectionString","uri":"mongodb://localhost:27017"}}');
 
         expect(() => resolveConnectionProfile('missing')).toThrow(/Unknown connection profile/);
     });
 
     it('rejects profiles that reference unset secret environment variables', async () => {
-        const { resolveConnectionProfile } = await loadProfiles('{"prod":{"uriEnv":"DOCUMENTDB_PROD_URI"}}', {
-            DOCUMENTDB_PROD_URI: '',
-        });
+        const { resolveConnectionProfile } = await loadProfiles(
+            '{"prod":{"authMode":"connectionString","uriEnv":"DOCUMENTDB_PROD_URI"}}',
+            {
+                DOCUMENTDB_PROD_URI: '',
+            },
+        );
 
         expect(() => resolveConnectionProfile('prod')).toThrow(/references unset environment variable/);
     });
@@ -104,14 +109,14 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
     });
 
     it('allows any database when allowedDatabases is omitted', async () => {
-        const { assertResourceAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
+        const { assertResourceAllowed } = await loadProfiles('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
 
         expect(() => assertResourceAllowed('dev', { dbName: 'anything' })).not.toThrow();
     });
 
     it('allows a database listed in allowedDatabases', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet","ops"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet","ops"]}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
@@ -120,14 +125,14 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('rejects a database not listed in allowedDatabases', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(/Database 'secrets' is not allowed/);
     });
 
     it('treats an empty allowedDatabases array as explicit deny-all', async () => {
-        const { assertResourceAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake","allowedDatabases":[]}}');
+        const { assertResourceAllowed } = await loadProfiles('{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":[]}}');
 
         expect(() => assertResourceAllowed('dev', { dbName: 'anything' })).toThrow(
             /Database 'anything' is not allowed.*Allowed databases: \(none\)\./,
@@ -136,7 +141,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('treats an empty allowedCollections[db] array as explicit deny-all for that db', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":[]}}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).toThrow(
@@ -146,7 +151,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('allows any collection when allowedCollections[db] is omitted', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'anything' })).not.toThrow();
@@ -154,7 +159,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('allows a collection listed in allowedCollections[db]', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).not.toThrow();
@@ -162,7 +167,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('rejects a collection not listed in allowedCollections[db]', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'secrets' })).toThrow(
@@ -172,7 +177,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('rejects collection access when its database itself is not allowed', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'other', collectionName: 'vehicles' })).toThrow(
@@ -182,7 +187,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
 
     it('returns scope via getProfileScope', async () => {
         const { getProfileScope } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
         );
 
         expect(getProfileScope('dev')).toEqual({
@@ -192,7 +197,7 @@ describe('connectionProfiles — per-profile resource allowlists', () => {
     });
 
     it('returns empty scope for unknown profile', async () => {
-        const { getProfileScope } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
+        const { getProfileScope } = await loadProfiles('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
 
         expect(getProfileScope('missing')).toEqual({});
     });
@@ -205,7 +210,7 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
     });
 
     it('defaults to read-only when allowedRoles is omitted', async () => {
-        const { assertProfileCapabilityAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
+        const { assertProfileCapabilityAllowed } = await loadProfiles('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
 
         expect(() => assertProfileCapabilityAllowed('dev', 'read')).not.toThrow();
         expect(() => assertProfileCapabilityAllowed('dev', 'write')).toThrow(
@@ -218,7 +223,7 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
 
     it('treats an empty allowedRoles array as explicit deny-all (no tiers, not even read)', async () => {
         const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":[]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":[]}}',
         );
 
         expect(() => assertProfileCapabilityAllowed('dev', 'read')).toThrow(
@@ -230,7 +235,7 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
 
     it('allows tiers listed in allowedRoles', async () => {
         const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write"]}}',
         );
 
         expect(() => assertProfileCapabilityAllowed('dev', 'read')).not.toThrow();
@@ -239,7 +244,7 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
 
     it('rejects tiers not listed in allowedRoles', async () => {
         const { assertProfileCapabilityAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read"]}}',
         );
 
         expect(() => assertProfileCapabilityAllowed('dev', 'write')).toThrow(
@@ -251,7 +256,7 @@ describe('connectionProfiles — per-profile capability tier restrictions', () =
     });
 
     it('is a no-op for unknown profile (resolveConnectionProfile surfaces that)', async () => {
-        const { assertProfileCapabilityAllowed } = await loadProfiles('{"dev":{"uri":"mongodb://fake"}}');
+        const { assertProfileCapabilityAllowed } = await loadProfiles('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
 
         expect(() => assertProfileCapabilityAllowed('missing', 'management')).not.toThrow();
     });
@@ -265,7 +270,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
 
     it('rejects a database listed in deniedDatabases', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","deniedDatabases":["secrets"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedDatabases":["secrets"]}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'secrets' })).toThrow(
@@ -276,7 +281,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
 
     it('denylist wins over allowlist when both list the same database', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet","secrets"],"deniedDatabases":["secrets"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet","secrets"],"deniedDatabases":["secrets"]}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
@@ -285,7 +290,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
 
     it('rejects a collection listed in deniedCollections[db]', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","deniedCollections":{"fleet":["audit_log"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedCollections":{"fleet":["audit_log"]}}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'audit_log' })).toThrow(
@@ -296,7 +301,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
 
     it('collection denylist wins over collection allowlist', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","allowedCollections":{"fleet":["vehicles","audit_log"]},"deniedCollections":{"fleet":["audit_log"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedCollections":{"fleet":["vehicles","audit_log"]},"deniedCollections":{"fleet":["audit_log"]}}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet', collectionName: 'vehicles' })).not.toThrow();
@@ -307,7 +312,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
 
     it('empty denylists are no-ops', async () => {
         const { assertResourceAllowed } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","deniedDatabases":[],"deniedCollections":{"fleet":[]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedDatabases":[],"deniedCollections":{"fleet":[]}}}',
         );
 
         expect(() => assertResourceAllowed('dev', { dbName: 'fleet' })).not.toThrow();
@@ -316,7 +321,7 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
 
     it('exposes denylists via getProfileScope', async () => {
         const { getProfileScope } = await loadProfiles(
-            '{"dev":{"uri":"mongodb://fake","deniedDatabases":["secrets"],"deniedCollections":{"fleet":["audit_log"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedDatabases":["secrets"],"deniedCollections":{"fleet":["audit_log"]}}}',
         );
 
         expect(getProfileScope('dev')).toEqual({

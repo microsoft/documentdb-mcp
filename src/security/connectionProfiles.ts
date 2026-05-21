@@ -50,7 +50,7 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
         };
     }
 
-    if (profile.uriEnv) {
+    if (profile.authMode === 'connectionString' && profile.uriEnv) {
         const uri = process.env[profile.uriEnv];
         if (!uri) {
             throw new Error(
@@ -60,11 +60,11 @@ export function resolveConnectionProfile(profileName: string): DocumentDBConnect
         return { kind: 'connectionString', uri };
     }
 
-    if (profile.uri) {
+    if (profile.authMode === 'connectionString' && profile.uri) {
         return { kind: 'connectionString', uri: profile.uri };
     }
 
-    throw new Error(`Connection profile '${profileName}' must define authMode=entra, uriEnv, or uri.`);
+    throw new Error(`Connection profile '${profileName}' must define authMode='entra' or authMode='connectionString'.`);
 }
 
 /**

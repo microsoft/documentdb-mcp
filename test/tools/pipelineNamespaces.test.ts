@@ -22,14 +22,14 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('returns empty for non-array input', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         expect(collectPipelineNamespaces(undefined)).toEqual([]);
         expect(collectPipelineNamespaces('not a pipeline')).toEqual([]);
         expect(collectPipelineNamespaces({})).toEqual([]);
     });
 
     it('extracts $lookup.from string and nested pipeline namespaces', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             { $lookup: { from: 'maintenance', localField: 'id', foreignField: 'vid', as: 'm' } },
             {
@@ -48,7 +48,7 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('extracts $lookup.from {db, coll} cross-database form', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             { $lookup: { from: { db: 'secrets', coll: 'passwords' }, as: 'x' } },
         ]);
@@ -56,7 +56,7 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('extracts $unionWith string and object forms', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             { $unionWith: 'shorthand' },
             { $unionWith: { coll: 'with_pipeline', pipeline: [{ $lookup: { from: 'inner', as: 'i' } }] } },
@@ -69,7 +69,7 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('extracts $graphLookup.from', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             { $graphLookup: { from: 'tree', startWith: '$id', connectFromField: 'parent', connectToField: '_id', as: 't' } },
         ]);
@@ -77,7 +77,7 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('extracts $merge.into and $out (string and {db, coll})', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             { $merge: { into: 'reports' } },
             { $merge: { into: { db: 'warehouse', coll: 'rollups' } } },
@@ -93,7 +93,7 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('recursively walks $facet sub-pipelines', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             {
                 $facet: {
@@ -109,7 +109,7 @@ describe('collectPipelineNamespaces', () => {
     });
 
     it('ignores stages without recognized namespace fields', async () => {
-        const { collectPipelineNamespaces } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { collectPipelineNamespaces } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
         const refs = collectPipelineNamespaces([
             { $match: { status: 'active' } },
             { $group: { _id: '$kind', n: { $sum: 1 } } },
@@ -132,7 +132,7 @@ describe('assertPipelineNamespacesAllowed', () => {
 
     it('passes when every referenced namespace is in scope', async () => {
         const { assertPipelineNamespacesAllowed } = await loadModule(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles","maintenance"]}}}',
         );
 
         expect(() =>
@@ -144,7 +144,7 @@ describe('assertPipelineNamespacesAllowed', () => {
 
     it('rejects $lookup.from when target collection is not allowed', async () => {
         const { assertPipelineNamespacesAllowed } = await loadModule(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
         );
 
         expect(() =>
@@ -156,7 +156,7 @@ describe('assertPipelineNamespacesAllowed', () => {
 
     it('rejects $lookup cross-database reference when target db is not allowed', async () => {
         const { assertPipelineNamespacesAllowed } = await loadModule(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"]}}',
         );
 
         expect(() =>
@@ -168,7 +168,7 @@ describe('assertPipelineNamespacesAllowed', () => {
 
     it('rejects $unionWith targeting a denied collection', async () => {
         const { assertPipelineNamespacesAllowed } = await loadModule(
-            '{"dev":{"uri":"mongodb://fake","deniedCollections":{"fleet":["audit_log"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedCollections":{"fleet":["audit_log"]}}}',
         );
 
         expect(() =>
@@ -178,7 +178,7 @@ describe('assertPipelineNamespacesAllowed', () => {
 
     it('rejects $merge.into pointing to a denied database', async () => {
         const { assertPipelineNamespacesAllowed } = await loadModule(
-            '{"dev":{"uri":"mongodb://fake","deniedDatabases":["warehouse"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","deniedDatabases":["warehouse"]}}',
         );
 
         expect(() =>
@@ -190,7 +190,7 @@ describe('assertPipelineNamespacesAllowed', () => {
 
     it('rejects $facet sub-pipeline that references a disallowed collection', async () => {
         const { assertPipelineNamespacesAllowed } = await loadModule(
-            '{"dev":{"uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedDatabases":["fleet"],"allowedCollections":{"fleet":["vehicles"]}}}',
         );
 
         expect(() =>
@@ -201,7 +201,7 @@ describe('assertPipelineNamespacesAllowed', () => {
     });
 
     it('is a no-op for profile without any scope configuration', async () => {
-        const { assertPipelineNamespacesAllowed } = await loadModule('{"dev":{"uri":"mongodb://fake"}}');
+        const { assertPipelineNamespacesAllowed } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake"}}');
 
         expect(() =>
             assertPipelineNamespacesAllowed('dev', 'fleet', [

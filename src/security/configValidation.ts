@@ -90,8 +90,11 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
         return;
     }
 
-    const authModeIsInvalid =
-        profile.authMode !== undefined && profile.authMode !== 'entra' && profile.authMode !== 'connectionString';
+    const authModeIsMissing = profile.authMode === undefined;
+    const authModeIsInvalid = !authModeIsMissing && profile.authMode !== 'entra' && profile.authMode !== 'connectionString';
+    if (authModeIsMissing) {
+        errors.push(`Connection profile '${name}' must define authMode='entra' or authMode='connectionString'.`);
+    }
     if (authModeIsInvalid) {
         errors.push(
             `Connection profile '${name}' has invalid authMode='${profile.authMode}'. ` +
@@ -103,7 +106,7 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
     // authMode is recognized. With an invalid authMode the operator already has one clear,
     // actionable error; piling on a second message that suggests `authMode=entra` as a fix
     // would contradict the first. Allowlist shape checks below are orthogonal and still run.
-    if (!authModeIsInvalid) {
+    if (!authModeIsMissing && !authModeIsInvalid) {
         if (profile.authMode === 'entra') {
             if (!profile.endpoint && !profile.uri) {
                 errors.push(
@@ -116,9 +119,10 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
                 );
             }
         } else {
-            // Either explicit 'connectionString' or unspecified: must yield a usable URI source.
             if (!profile.uri && !profile.uriEnv) {
-                errors.push(`Connection profile '${name}' must define authMode=entra, uri, or uriEnv.`);
+                errors.push(
+                    `Connection profile '${name}' uses connectionString authentication and must define uri or uriEnv.`,
+                );
             }
             if (profile.uriEnv && !process.env[profile.uriEnv]) {
                 errors.push(
