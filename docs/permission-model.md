@@ -93,15 +93,15 @@ Today this is keyed by category, not by caller. Per-caller rate limiting is a kn
 
 Catches bad types, missing required fields, etc. Not a security boundary on its own but it normalizes input so downstream guards see well-formed values.
 
-### [4] `connection_profile` presence
+### [4] Connection profile resolution
 
 | Aspect | Detail |
 |---|---|
 | Where | [src/tools/utils/dbGuard.ts](../src/tools/utils/dbGuard.ts) |
-| Default | every tool requires `connection_profile`; missing = reject |
+| Default | HTTP/SSE tools require `connection_profile`; local stdio can use `DEFAULT_CONNECTION_PROFILE` or the sole configured profile |
 | On deny | `isError: true`, message `connection_profile is required` |
 
-The server is stateless — there is no implicit "current connection." Every tool call must name its profile.
+The server is stateless — there is no mutable "current connection." Enterprise calls must name their profile explicitly. Local personal stdio usage may resolve a stable default profile from startup configuration, but tools still never accept runtime connection strings.
 
 ### [5] Global capability flag — `assertCapabilityEnabled`
 
