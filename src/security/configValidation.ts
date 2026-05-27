@@ -25,6 +25,7 @@ export function validateConfig(config: MCPConfig): void {
     validateRateLimit(config, errors);
     validateAuth(config, errors);
     validateProfiles(config, errors);
+    validateDefaultConnectionProfile(config, errors);
 
     if (errors.length > 0) {
         throw new Error(
@@ -35,9 +36,7 @@ export function validateConfig(config: MCPConfig): void {
 
 function validateTransport(config: MCPConfig, errors: string[]): void {
     if (!VALID_TRANSPORTS.includes(config.transport as (typeof VALID_TRANSPORTS)[number])) {
-        errors.push(
-            `TRANSPORT='${config.transport}' is invalid. Must be one of: ${VALID_TRANSPORTS.join(', ')}.`,
-        );
+        errors.push(`TRANSPORT='${config.transport}' is invalid. Must be one of: ${VALID_TRANSPORTS.join(', ')}.`);
     }
 }
 
@@ -73,16 +72,29 @@ function validateProfiles(config: MCPConfig, errors: string[]): void {
     }
 }
 
+function validateDefaultConnectionProfile(config: MCPConfig, errors: string[]): void {
+    if (!config.defaultConnectionProfile) return;
+    if (config.transport !== 'stdio') {
+        errors.push('DEFAULT_CONNECTION_PROFILE is only supported for local stdio transport.');
+    }
+    if (!config.connectionProfiles[config.defaultConnectionProfile]) {
+        errors.push(
+            `DEFAULT_CONNECTION_PROFILE='${config.defaultConnectionProfile}' does not match a configured connection profile.`,
+        );
+    }
+}
+
 function validateProfile(name: string, profile: ConnectionProfileConfig, errors: string[]): void {
     if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
         errors.push(`Connection profile '${name}' must be a JSON object.`);
         return;
     }
 
-    const authModeIsInvalid =
-        profile.authMode !== undefined &&
-        profile.authMode !== 'entra' &&
-        profile.authMode !== 'connectionString';
+    const authModeIsMissing = profile.authMode === undefined;
+    const authModeIsInvalid = !authModeIsMissing && profile.authMode !== 'entra' && profile.authMode !== 'connectionString';
+    if (authModeIsMissing) {
+        errors.push(`Connection profile '${name}' must define authMode='entra' or authMode='connectionString'.`);
+    }
     if (authModeIsInvalid) {
         errors.push(
             `Connection profile '${name}' has invalid authMode='${profile.authMode}'. ` +
@@ -94,7 +106,7 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
     // authMode is recognized. With an invalid authMode the operator already has one clear,
     // actionable error; piling on a second message that suggests `authMode=entra` as a fix
     // would contradict the first. Allowlist shape checks below are orthogonal and still run.
-    if (!authModeIsInvalid) {
+    if (!authModeIsMissing && !authModeIsInvalid) {
         if (profile.authMode === 'entra') {
             if (!profile.endpoint && !profile.uri) {
                 errors.push(
@@ -107,10 +119,9 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
                 );
             }
         } else {
-            // Either explicit 'connectionString' or unspecified: must yield a usable URI source.
             if (!profile.uri && !profile.uriEnv) {
                 errors.push(
-                    `Connection profile '${name}' must define authMode=entra, uri, or uriEnv.`,
+                    `Connection profile '${name}' uses connectionString authentication and must define uri or uriEnv.`,
                 );
             }
             if (profile.uriEnv && !process.env[profile.uriEnv]) {
@@ -129,17 +140,10 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
     validateAllowedRoles(name, profile.allowedRoles, errors);
 }
 
-function validateStringArray(
-    profileName: string,
-    fieldName: string,
-    value: unknown,
-    errors: string[],
-): void {
+function validateStringArray(profileName: string, fieldName: string, value: unknown, errors: string[]): void {
     if (value === undefined) return;
     if (!Array.isArray(value)) {
-        errors.push(
-            `Connection profile '${profileName}' ${fieldName} must be a string array.`,
-        );
+        errors.push(`Connection profile '${profileName}' ${fieldName} must be a string array.`);
         return;
     }
     for (const [i, item] of value.entries()) {
@@ -151,24 +155,15 @@ function validateStringArray(
     }
 }
 
-function validateRecordOfStringArrays(
-    profileName: string,
-    fieldName: string,
-    value: unknown,
-    errors: string[],
-): void {
+function validateRecordOfStringArrays(profileName: string, fieldName: string, value: unknown, errors: string[]): void {
     if (value === undefined) return;
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        errors.push(
-            `Connection profile '${profileName}' ${fieldName} must be an object mapping db -> string[].`,
-        );
+        errors.push(`Connection profile '${profileName}' ${fieldName} must be an object mapping db -> string[].`);
         return;
     }
     for (const [db, list] of Object.entries(value as Record<string, unknown>)) {
         if (!Array.isArray(list)) {
-            errors.push(
-                `Connection profile '${profileName}' ${fieldName}['${db}'] must be a string array.`,
-            );
+            errors.push(`Connection profile '${profileName}' ${fieldName}['${db}'] must be a string array.`);
             continue;
         }
         for (const [i, item] of list.entries()) {

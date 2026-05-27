@@ -32,8 +32,10 @@ export function createServer(): McpServer {
 }
 
 export async function runStdioServer(): Promise<void> {
-    if (config.auth.required && !config.allowUnauthenticatedStdio) {
-        throw new Error('stdio transport is disabled when AUTH_REQUIRED=true. Set ALLOW_UNAUTHENTICATED_STDIO=true only for trusted local development.');
+    if (config.auth.required && !config.trustLocalStdio) {
+        throw new Error(
+            'stdio transport is disabled when AUTH_REQUIRED=true. Set TRUST_LOCAL_STDIO=true only when launched by a trusted local MCP client.',
+        );
     }
 
     const server = createServer();

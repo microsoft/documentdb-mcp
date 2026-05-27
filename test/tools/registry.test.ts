@@ -12,7 +12,7 @@ function setEnv(overrides: NodeJS.ProcessEnv = {}) {
         ENABLE_WRITE_TOOLS: 'true',
         ENABLE_MANAGEMENT_TOOLS: 'true',
         CONNECTION_PROFILES:
-            '{"dev":{"uri":"mongodb://fake","allowedRoles":["read","write","management"]}}',
+            '{"dev":{"authMode":"connectionString","uri":"mongodb://fake","allowedRoles":["read","write","management"]}}',
         ...overrides,
     };
 }

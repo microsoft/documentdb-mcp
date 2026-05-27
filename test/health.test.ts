@@ -30,8 +30,8 @@ function validCfg(): MCPConfig {
             maxReturnBytes: 1_048_576,
             mongoMaxTimeMs: 30_000,
         },
-        connectionProfiles: { dev: { uri: 'mongodb://localhost:27017' } },
-        allowUnauthenticatedStdio: true,
+        connectionProfiles: { dev: { authMode: 'connectionString', uri: 'mongodb://localhost:27017' } },
+        trustLocalStdio: true,
     } as MCPConfig;
 }
 
