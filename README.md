@@ -3,7 +3,14 @@
 
 # DocumentDB MCP Server
 
-> **Public preview.** This server is in public preview. Interfaces, configuration, and tool behavior may change without notice. Do not use it in production without your own review.
+[![Status: Public Preview](https://img.shields.io/badge/Status-Public%20Preview-orange?style=flat)](https://azure.microsoft.com/support/legal/preview-supplemental-terms/)
+
+> [!IMPORTANT]
+> **Public Preview.** This server is in Public Preview. APIs, configuration,
+> environment variables, and tool behavior may change in breaking ways before
+> General Availability. There is no SLA. Provided "as-is"; see the
+> [Azure Preview Supplemental Terms](https://azure.microsoft.com/support/legal/preview-supplemental-terms/).
+> Not recommended for production workloads without your own review.
 
 DocumentDB MCP Server is a tools-only Model Context Protocol server for Azure DocumentDB and other MongoDB-compatible DocumentDB deployments. It exposes stateless database, collection, index, and document tools through MCP while keeping database connection details under server administrator control.
 
