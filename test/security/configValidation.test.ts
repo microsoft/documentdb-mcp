@@ -149,18 +149,74 @@ describe('validateConfig', () => {
     describe('auth cross-field', () => {
         it('rejects AUTH_REQUIRED=true without tenantId', () => {
             expect(() =>
-                validateConfig(baseConfig({ auth: { required: true, tenantId: '', audience: 'aud' } })),
+                validateConfig(
+                    baseConfig({
+                        // streamable-http to bypass the stdio+trust short-circuit.
+                        transport: 'streamable-http',
+                        auth: { required: true, tenantId: '', audience: 'aud' },
+                    }),
+                ),
             ).toThrow(/AUTH_REQUIRED=true requires ENTRA_TENANT_ID/);
         });
         it('rejects AUTH_REQUIRED=true without audience', () => {
             expect(() =>
-                validateConfig(baseConfig({ auth: { required: true, tenantId: 'tid', audience: '' } })),
+                validateConfig(
+                    baseConfig({
+                        transport: 'streamable-http',
+                        auth: { required: true, tenantId: 'tid', audience: '' },
+                    }),
+                ),
             ).toThrow(/AUTH_REQUIRED=true requires ENTRA_AUDIENCE/);
         });
         it('does not require ENTRA_* when AUTH_REQUIRED=false', () => {
             expect(() =>
                 validateConfig(baseConfig({ auth: { required: false, tenantId: '', audience: '' } })),
             ).not.toThrow();
+        });
+        it('does not require ENTRA_* when TRANSPORT=stdio + TRUST_LOCAL_STDIO=true, even if AUTH_REQUIRED=true', () => {
+            // The README's VS Code install badge produces exactly this combo —
+            // AUTH_REQUIRED is left at its `true` default while TRANSPORT=stdio
+            // and TRUST_LOCAL_STDIO=true are explicitly set. `runStdioServer`
+            // already short-circuits the Entra middleware on these flags, so
+            // the validator must agree or the server exits before it ever
+            // gets to the transport switch.
+            expect(() =>
+                validateConfig(
+                    baseConfig({
+                        transport: 'stdio',
+                        trustLocalStdio: true,
+                        auth: { required: true, tenantId: '', audience: '' },
+                    }),
+                ),
+            ).not.toThrow();
+        });
+        it('still requires ENTRA_* when TRANSPORT=stdio but TRUST_LOCAL_STDIO=false', () => {
+            // Without `trustLocalStdio`, stdio is itself disabled at the
+            // runtime check; the validator should preserve the existing
+            // diagnostic instead of silently allowing a config that will
+            // fail at startup with a less actionable error.
+            expect(() =>
+                validateConfig(
+                    baseConfig({
+                        transport: 'stdio',
+                        trustLocalStdio: false,
+                        auth: { required: true, tenantId: '', audience: '' },
+                    }),
+                ),
+            ).toThrow(/AUTH_REQUIRED=true requires ENTRA_TENANT_ID/);
+        });
+        it('still requires ENTRA_* for streamable-http even when TRUST_LOCAL_STDIO=true', () => {
+            // trustLocalStdio is a stdio-only escape hatch; HTTP transports
+            // must always require Entra config when AUTH_REQUIRED=true.
+            expect(() =>
+                validateConfig(
+                    baseConfig({
+                        transport: 'streamable-http',
+                        trustLocalStdio: true,
+                        auth: { required: true, tenantId: '', audience: '' },
+                    }),
+                ),
+            ).toThrow(/AUTH_REQUIRED=true requires ENTRA_TENANT_ID/);
         });
     });
 
