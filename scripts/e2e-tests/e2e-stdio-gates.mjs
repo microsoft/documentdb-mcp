@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // E2E driver: spawns dist/main.js over stdio for each scenario, runs one tool call, asserts the result.
-// Covers all stdio-gated checks in docs/e2e-testing-guide.md Section 7b (resource scope) and Section 7c (capability tier).
+// Covers all stdio-gated checks in docs/e2e-tests/e2e-testing-guide.md Section 7b (resource scope) and Section 7c (capability tier).
 //
 // Usage:  node scripts/e2e-tests/e2e-stdio-gates.mjs
 

@@ -51,3 +51,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+# entra-e2e runtime state (contains tenant/app/user object IDs)
+docs/e2e-tests/entra-e2e/bash/.state.json
+docs/e2e-tests/entra-e2e/pwsh/.state.json
