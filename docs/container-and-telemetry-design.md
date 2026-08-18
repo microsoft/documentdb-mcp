@@ -6,19 +6,23 @@ This document describes two related capabilities added to the DocumentDB MCP Ser
 
 1. **Containerization** — a production-oriented, multi-stage `Dockerfile` that packages the
    server as a small, non-root image running the network (`streamable-http`) transport.
-2. **Application Insights telemetry** — an optional, privacy-preserving telemetry layer that
+2. **Application Insights telemetry** — an **opt-out**, privacy-preserving telemetry layer that
    emits **install/activation counts** and **MCP tool-usage** signals to Azure Application
    Insights.
 
-Both are **off by default in terms of data collection**: telemetry is a no-op unless an
-Application Insights connection string is supplied at runtime. The container itself runs with
-telemetry disabled unless the operator explicitly provides that connection string.
+The primary purpose of telemetry is to **measure adoption and feature usage**, so it is **enabled
+by default** and operators explicitly **opt out** when they do not want it. Data is only actually
+transmitted when a connection string is available (embedded in official published builds, or
+supplied at runtime); a source build with no connection string is a silent no-op. Opting out
+(`APPINSIGHTS_ENABLED=false`) disables collection entirely, regardless of any connection string.
 
 ### Goals
 
 - Ship a reproducible, minimal, hardened container image for the MCP server.
-- Understand adoption ("how many installs / activations") and feature usage ("which tools are
-  used, how often, allowed vs denied") to prioritize investment.
+- **Measure adoption** ("how many installs / activations") and **feature usage** ("which tools are
+  used, how often, allowed vs denied") by default, so the data is representative rather than biased
+  toward the small subset of users who would opt in.
+- Give operators a clear, single, well-documented **opt-out** switch.
 - Never collect sensitive data (queries, documents, credentials, connection strings).
 - Keep the Application Insights connection string **out of the public repository**.
 
@@ -26,7 +30,8 @@ telemetry disabled unless the operator explicitly provides that connection strin
 
 - Per-user behavioral analytics or PII collection.
 - Shipping query payloads, filters, document contents, or backend hostnames/credentials.
-- Making telemetry mandatory — the server must run identically with telemetry off.
+- Making telemetry mandatory — a single documented opt-out (`APPINSIGHTS_ENABLED=false`) must
+  fully disable collection.
 
 ## 2. Architecture
 
@@ -41,7 +46,7 @@ flowchart LR
         Startup --> AI
         Track --> AI
     end
-    AI -->|"HTTPS (only if connection string set)"| Azure["Azure Application Insights"]
+    AI -->|"HTTPS (unless opted out or no connection string)"| Azure["Azure Application Insights"]
 ```
 
 Telemetry is wired into two existing chokepoints so no per-tool code changes are required:
@@ -63,26 +68,51 @@ Telemetry configuration is added to the central config in [src/config.ts](../src
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | *(empty)* | Azure App Insights connection string. **When empty, telemetry is fully disabled.** |
-| `APPINSIGHTS_ENABLED` | `true` | Kill switch. Set to `false` to disable telemetry even when a connection string is present. |
+| `APPINSIGHTS_ENABLED` | `true` | **Opt-out switch.** Telemetry is on by default; set to `false` to fully disable collection (no client is created, no events are sent). |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | *(embedded in official builds; otherwise empty)* | Azure App Insights connection string. Official published images embed it so telemetry works out-of-the-box; source builds with no value simply have nothing to send. |
 | `APPINSIGHTS_CLOUD_ROLE` | `documentdb-mcp-server` | Cloud role name used to identify this component in App Insights. |
 
-Telemetry is considered **enabled only when** `APPINSIGHTS_ENABLED` is truthy **and** a non-empty
-`APPLICATIONINSIGHTS_CONNECTION_STRING` is provided. Absent the connection string, `initTelemetry()`
-logs a single line to stderr and every telemetry helper becomes a silent no-op.
+Telemetry actually **transmits** only when it is not opted out (`APPINSIGHTS_ENABLED` is truthy)
+**and** a non-empty connection string is available. Because the connection string is embedded in
+official published builds, those images collect by default; operators disable collection with the
+single `APPINSIGHTS_ENABLED=false` opt-out. If no connection string is present (e.g. a local build
+from source), `initTelemetry()` logs a single line to stderr and every telemetry helper becomes a
+silent no-op.
 
-### 3.1 Keeping the connection string out of the public repo
+### 3.1 Opting out
+
+Collection is disabled with a single, documented switch:
+
+```bash
+# Docker
+docker run -e APPINSIGHTS_ENABLED=false ... documentdb-mcp
+
+# or in any environment
+export APPINSIGHTS_ENABLED=false
+```
+
+When opted out, `initTelemetry()` never constructs an Application Insights client, so no events,
+metrics, or auto-collected signals leave the process. This is honored identically across all
+transports (stdio / streamable-http / sse).
+
+### 3.2 Keeping the connection string out of the public repo
 
 This is a **public repository**, so the connection string is treated as a secret and is **never
 committed**. The design enforces this by construction:
 
 - The connection string is **only** read from the `APPLICATIONINSIGHTS_CONNECTION_STRING`
-  environment variable at runtime — it is never hard-coded in source.
+  environment variable (or an equivalent secret injected at build/publish time) — it is never
+  hard-coded in source.
+- **Official published images** embed the connection string at publish time via a **CI secret**
+  (e.g. a GitHub Actions secret passed as a build arg / baked into the runtime environment). The
+  secret lives in the CI/CD system, **not** in the repository. This is what enables opt-out
+  collection to work out-of-the-box for the distributed image.
 - [.env.example](../.env.example) ships the variable **commented out** with a placeholder value,
   so contributors see the knob without a real value being present.
 - `.env` (the real, local values) is excluded from the image via [.dockerignore](../.dockerignore)
   and from git via `.gitignore`, so it cannot be accidentally baked into the image or pushed.
-- The `Dockerfile` does **not** bake the value in. It is injected at run time only, e.g.:
+- The `Dockerfile` does **not** hard-code the value. For local/self builds it is injected at run
+  time only, e.g.:
 
   ```bash
   docker run -p 8070:8070 \
@@ -94,9 +124,9 @@ committed**. The design enforces this by construction:
 - In Azure (ACA / AKS / App Service), inject it as a **secret** / Key Vault reference rather than a
   plain environment variable in source-controlled manifests.
 
-**Rule of thumb:** the connection string enters the system only through runtime environment /
-secret injection. If you ever see it in a source file, a committed `.env`, or a Dockerfile `ENV`,
-that is a bug.
+**Rule of thumb:** the connection string enters the system only through a CI/CD secret or runtime
+environment / secret injection. If you ever see it in a source file, a committed `.env`, or a
+hard-coded Dockerfile `ENV`, that is a bug.
 
 ## 4. What We Collect
 
@@ -150,7 +180,10 @@ user payload data.
 
 ## 6. Privacy & Safety Properties
 
-- **Opt-in by data:** no connection string ⇒ no telemetry client ⇒ no network calls.
+- **Opt-out, honored fully:** setting `APPINSIGHTS_ENABLED=false` prevents any client from being
+  created ⇒ no events, metrics, or auto-collected signals leave the process.
+- **No connection string ⇒ no network calls:** a build with no embedded/injected connection string
+  is a silent no-op even with telemetry enabled.
 - **Fail-safe:** telemetry init and every emit are wrapped in try/catch. A telemetry failure logs
   to stderr and is swallowed — it can never crash or block a tool call or server startup.
 - **Lazy loading:** the `applicationinsights` module is required via a computed specifier only when
@@ -159,6 +192,8 @@ user payload data.
 - **Least data:** only enumerated, non-sensitive dimensions are emitted (see §4/§5).
 - **Auditability:** the same allow/deny decisions are also written to local `[MCP-AUDIT]` logs, so
   operators can independently verify what telemetry would contain.
+- **Discoverability of the opt-out:** the opt-out switch is documented in the README and
+  [.env.example](../.env.example) so operators can find and set it easily.
 
 ## 7. Dockerfile Design
 
@@ -208,13 +243,15 @@ excluding `node_modules`, `dist`, tests, docs, scripts, and **all `.env*` files 
 - **Verifying telemetry:** in Application Insights, chart the `Installs` metric (or `ServerStartup`
   event) for activations, and the `ToolUsage` metric / `ToolInvocation` event (sliced by
   `toolName` / `decision`) for feature usage.
-- **Disabling telemetry:** omit `APPLICATIONINSIGHTS_CONNECTION_STRING`, or set
-  `APPINSIGHTS_ENABLED=false`.
+- **Opting out:** set `APPINSIGHTS_ENABLED=false`. This is the single, documented switch that
+  fully disables collection. (A source build with no connection string also collects nothing.)
 
 ## 9. Future Considerations
 
 - Add a sampling rate control for very high-volume deployments.
 - Consider a first-run/first-activation dedupe if "installs" needs to mean unique deployments
   rather than process activations.
-- Optionally surface an explicit end-user consent/notice string in the README for downstream
-  operators enabling telemetry.
+- Surface a clear **first-run telemetry notice** (printed to stderr on startup) stating that
+  anonymous usage telemetry is enabled and how to opt out, so the opt-out is transparent.
+- Consider honoring the community `DO_NOT_TRACK` environment variable as an additional opt-out
+  signal alongside `APPINSIGHTS_ENABLED=false`.
