@@ -15,7 +15,7 @@ import {
     serializeResponse,
 } from './utils/limits';
 import { parseParams, parseUpdate } from './utils/paramParser';
-import { connectionProfileSchema } from './utils/toolSecurity';
+import { collectionNameSchema, connectionProfileSchema, dbNameSchema } from './utils/toolSecurity';
 
 const objectOrStringSchema = z.union([z.record(z.unknown()), z.string()]);
 const aggregateWriteStages = new Set(['$out', '$merge']);
@@ -61,8 +61,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'read',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             query: objectOrStringSchema.default({}).describe('Query filter in MongoDB style'),
             options: z
                 .union([z.record(z.unknown()), z.string()])
@@ -115,8 +115,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'read',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             query: objectOrStringSchema.default({}).describe('Query filter in MongoDB style'),
         },
         handler: async ({ db_name, collection_name, query = {} }, client) => {
@@ -140,8 +140,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'write',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             documents: z
                 .union([z.record(z.unknown()), z.array(z.record(z.unknown())), z.string()])
                 .describe('Document object, array of documents, or JSON string of either'),
@@ -191,8 +191,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'write',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             filter: objectOrStringSchema.describe('Query filter'),
             update: objectOrStringSchema.describe('Update operations ($set, $inc, etc.) or replacement document'),
             upsert: z
@@ -264,8 +264,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'write',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             filter: objectOrStringSchema.describe('Query filter'),
             multi: z
                 .union([z.boolean(), z.string()])
@@ -315,8 +315,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'read',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             pipeline: z.union([z.array(z.record(z.unknown())), z.string()]).describe('Aggregation pipeline stages'),
             allow_disk_use: z
                 .union([z.boolean(), z.string()])
@@ -356,8 +356,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'write',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             query: objectOrStringSchema.describe('Query filter'),
             update: objectOrStringSchema.describe('Update operations ($set, $inc, etc.)'),
             upsert: z
@@ -407,8 +407,8 @@ export const documentToolDefinitions: ToolDefinition[] = [
         requiredRole: 'read',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             operation: z.enum(['find', 'count', 'aggregate']).describe('Which operation to explain'),
             query: objectOrStringSchema.default({}).describe('Filter for find/count operations'),
             options: z

@@ -11,7 +11,7 @@ import { defineTool, registerToolDefinitions, type ToolDefinition } from './regi
 import { assertDestructiveConfirmation } from './utils/confirmations';
 import { clampPositiveInt, maxTimeMSOption, serializeResponse } from './utils/limits';
 import { parseParams } from './utils/paramParser';
-import { connectionProfileSchema } from './utils/toolSecurity';
+import { collectionNameSchema, connectionProfileSchema, dbNameSchema } from './utils/toolSecurity';
 
 export const collectionToolDefinitions: ToolDefinition[] = [
     defineTool({
@@ -22,8 +22,8 @@ export const collectionToolDefinitions: ToolDefinition[] = [
         requiredRole: 'management',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection to drop'),
+            db_name: dbNameSchema,
+            collection_name: z.string().min(1).describe('Name of the collection to drop'),
             confirm_collection_name: z
                 .string()
                 .describe(
@@ -44,9 +44,9 @@ export const collectionToolDefinitions: ToolDefinition[] = [
         requiredRole: 'management',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection to rename'),
-            new_collection_name: z.string().describe('New name for the collection'),
+            db_name: dbNameSchema,
+            collection_name: z.string().min(1).describe('Name of the collection to rename'),
+            new_collection_name: z.string().min(1).describe('New name for the collection'),
         },
         handler: async ({ db_name, collection_name, new_collection_name }, client) => {
             await client.db(db_name).collection(collection_name).rename(new_collection_name, { dropTarget: false });
@@ -62,8 +62,8 @@ export const collectionToolDefinitions: ToolDefinition[] = [
         requiredRole: 'read',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             sample_size: z
                 .union([z.number(), z.string()])
                 .default(10)
@@ -130,9 +130,10 @@ export const collectionToolDefinitions: ToolDefinition[] = [
         inputSchema: {
             connection_profile: connectionProfileSchema,
             scope: z.enum(['database', 'collection', 'index']).describe('Which level of statistics to fetch'),
-            db_name: z.string().describe('Name of the database'),
+            db_name: dbNameSchema,
             collection_name: z
                 .string()
+                .min(1)
                 .optional()
                 .describe('Name of the collection; required when scope is collection or index'),
         },

@@ -154,6 +154,18 @@ describe('registered DocumentDB tools', () => {
         }
     });
 
+    it('rejects empty db_name and collection_name at the input schema boundary', async () => {
+        const { tools } = await setupRegisteredTools();
+        const findSchema = tools.find_documents.config.inputSchema as Record<string, any>;
+        expect(findSchema.db_name.safeParse('').success).toBe(false);
+        expect(findSchema.db_name.safeParse('fleet').success).toBe(true);
+        expect(findSchema.collection_name.safeParse('').success).toBe(false);
+        expect(findSchema.collection_name.safeParse('vehicles').success).toBe(true);
+        // rename destination is likewise constrained to a non-empty name.
+        const renameSchema = tools.rename_collection.config.inputSchema as Record<string, any>;
+        expect(renameSchema.new_collection_name.safeParse('').success).toBe(false);
+    });
+
     it('exposes destructive-operation confirmation fields in tool input schemas', async () => {
         const { tools } = await setupRegisteredTools();
 
