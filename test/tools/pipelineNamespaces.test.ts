@@ -210,4 +210,23 @@ describe('assertPipelineNamespacesAllowed', () => {
             ]),
         ).not.toThrow();
     });
+
+    it('rejects a blank db in $merge.into even when the profile has no scope (empty-string bypass)', async () => {
+        // $merge into {db:"", coll} must not resolve to the connection default database and skip checks.
+        const { assertPipelineNamespacesAllowed } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake/prod"}}');
+
+        expect(() =>
+            assertPipelineNamespacesAllowed('dev', 'fleet', [
+                { $merge: { into: { db: '', coll: 'rollups' } } },
+            ]),
+        ).toThrow(/Database name must not be empty/);
+    });
+
+    it('rejects a blank db in $out even when the profile has no scope (empty-string bypass)', async () => {
+        const { assertPipelineNamespacesAllowed } = await loadModule('{"dev":{"authMode":"connectionString","uri":"mongodb://fake/prod"}}');
+
+        expect(() =>
+            assertPipelineNamespacesAllowed('dev', 'fleet', [{ $out: { db: '', coll: 'exfil' } }]),
+        ).toThrow(/Database name must not be empty/);
+    });
 });

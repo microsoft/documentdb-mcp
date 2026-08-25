@@ -332,3 +332,44 @@ describe('connectionProfiles — per-profile resource denylists (deny wins)', ()
         });
     });
 });
+
+describe('connectionProfiles — blank resource names are rejected pre-connection', () => {
+    // Profile whose connection string carries a default database ('prod') that the allowlist excludes.
+    // A blank db_name must not fall through to that default.
+    const profile = '{"dev":{"authMode":"connectionString","uri":"mongodb://fake/prod","allowedDatabases":["analytics_ro"]}}';
+
+    afterEach(() => {
+        process.env = { ...originalEnv };
+        vi.restoreAllMocks();
+    });
+
+    it('rejects an empty database name', async () => {
+        const { assertResourceAllowed } = await loadProfiles(profile);
+
+        expect(() =>
+            assertResourceAllowed('dev', { dbName: '', collectionName: 'audit_log' }),
+        ).toThrow(/Database name must not be empty/);
+    });
+
+    it('rejects a whitespace-only database name', async () => {
+        const { assertResourceAllowed } = await loadProfiles(profile);
+
+        expect(() =>
+            assertResourceAllowed('dev', { dbName: '   ', collectionName: 'audit_log' }),
+        ).toThrow(/Database name must not be empty/);
+    });
+
+    it('rejects an empty collection name', async () => {
+        const { assertResourceAllowed } = await loadProfiles(profile);
+
+        expect(() =>
+            assertResourceAllowed('dev', { dbName: 'fleet', collectionName: '' }),
+        ).toThrow(/Collection name must not be empty/);
+    });
+
+    it('allows an omitted (undefined) name for tools that do not target a resource', async () => {
+        const { assertResourceAllowed } = await loadProfiles(profile);
+
+        expect(() => assertResourceAllowed('dev', {})).not.toThrow();
+    });
+});

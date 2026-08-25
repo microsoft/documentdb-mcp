@@ -6,6 +6,10 @@ export const connectionProfileSchema = z
     .optional()
     .describe('Administrator-defined connection profile for this stateless tool call');
 
+// Reject empty/blank names at the input boundary; withDbGuard enforces the same before connecting.
+export const dbNameSchema = z.string().min(1).describe('Name of the database');
+export const collectionNameSchema = z.string().min(1).describe('Name of the collection');
+
 export interface SecureToolInput {
     connection_profile?: string;
     db_name?: string;

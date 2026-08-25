@@ -89,7 +89,7 @@ export const databaseToolDefinitions: ToolDefinition[] = [
         requiredRole: 'management',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database to drop'),
+            db_name: z.string().min(1).describe('Name of the database to drop'),
             confirm_db_name: z
                 .string()
                 .describe('Must exactly equal db_name. Confirms the destructive drop_database operation.'),

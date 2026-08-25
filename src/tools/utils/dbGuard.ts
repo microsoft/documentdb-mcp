@@ -105,7 +105,7 @@ export function withDbGuard<Inp extends SecureToolInput>(
                 dbName: input.db_name,
                 collectionName: input.collection_name,
             });
-            if (input.new_collection_name) {
+            if (input.new_collection_name !== undefined) {
                 assertResourceAllowed(connectionProfile, {
                     dbName: input.db_name,
                     collectionName: input.new_collection_name,

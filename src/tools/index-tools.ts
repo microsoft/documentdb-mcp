@@ -10,7 +10,7 @@ import { defineTool, registerToolDefinitions, type ToolDefinition } from './regi
 import { assertDestructiveConfirmation } from './utils/confirmations';
 import { serializeResponse } from './utils/limits';
 import { parseParams } from './utils/paramParser';
-import { connectionProfileSchema } from './utils/toolSecurity';
+import { collectionNameSchema, connectionProfileSchema, dbNameSchema } from './utils/toolSecurity';
 
 export const indexToolDefinitions: ToolDefinition[] = [
     defineTool({
@@ -20,8 +20,8 @@ export const indexToolDefinitions: ToolDefinition[] = [
         requiredRole: 'management',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             keys: z
                 .union([z.record(z.unknown()), z.string()])
                 .describe('Index key specification, e.g. { field: 1 }'),
@@ -51,8 +51,8 @@ export const indexToolDefinitions: ToolDefinition[] = [
         requiredRole: 'read',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
         },
         handler: async ({ db_name, collection_name }, client) => {
             const indexes = await client.db(db_name).collection(collection_name).listIndexes().toArray();
@@ -68,8 +68,8 @@ export const indexToolDefinitions: ToolDefinition[] = [
         requiredRole: 'management',
         inputSchema: {
             connection_profile: connectionProfileSchema,
-            db_name: z.string().describe('Name of the database'),
-            collection_name: z.string().describe('Name of the collection'),
+            db_name: dbNameSchema,
+            collection_name: collectionNameSchema,
             index_name: z.string().describe('Name of the index to drop'),
             confirm_index_name: z
                 .string()

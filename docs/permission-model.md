@@ -160,6 +160,8 @@ This is the **profile-side ceiling**: even when the global flag is on and the ca
 | Effect | Per-profile allowlist + denylist of databases and per-database collections. Denylist runs first, so `denied*` always wins over `allowed*`. |
 | On deny | "Database 'secrets' is not allowed for connection profile 'dev'. Allowed databases: fleet." (or `(none)` for `[]`); for denylist hits: "Database 'secrets' is denied for connection profile 'dev'." |
 
+Explicitly empty or whitespace-only database and collection names are rejected before a backend connection is opened, so `db_name: ""` can never resolve to the connection string's default database under any profile. An omitted (`undefined`) name remains valid for tools that do not target that resource level (e.g. `list_databases` without a filter).
+
 For `rename_collection`, the source and destination collection names are both checked.
 
 `list_databases` additionally filters its **response** by the same scope ([src/tools/database-tools.ts](../src/tools/database-tools.ts)) so callers cannot enumerate databases or collections outside the allowlist or that are explicitly denied.
