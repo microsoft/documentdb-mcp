@@ -122,6 +122,15 @@ export function assertResourceAllowed(profileName: string, target: { dbName?: st
     const { dbName, collectionName } = target;
     const { allowedDatabases, allowedCollections, deniedDatabases, deniedCollections } = profile;
 
+    // Reject blank names before any allow/deny logic so client.db("") can't resolve to the
+    // connection string's default database. undefined stays valid (tool doesn't target that level).
+    if (dbName !== undefined && dbName.trim().length === 0) {
+        throw new Error(`Database name must not be empty for connection profile '${profileName}'.`);
+    }
+    if (collectionName !== undefined && collectionName.trim().length === 0) {
+        throw new Error(`Collection name must not be empty for connection profile '${profileName}'.`);
+    }
+
     // Denylists run first — deny wins.
     if (dbName && deniedDatabases && deniedDatabases.includes(dbName)) {
         throw new Error(`Database '${dbName}' is denied for connection profile '${profileName}'.`);

@@ -23,7 +23,8 @@ describe('withDbGuard', () => {
     });
 
     it('returns an MCP error when connection_profile is missing', async () => {
-        resetEnv();
+        // Non-stdio transport so the stdio single-profile fallback doesn't apply and the profile is mandatory.
+        resetEnv({ TRANSPORT: 'streamable-http' });
         const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
         const handler = vi.fn();
         const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
@@ -200,5 +201,46 @@ describe('withDbGuard', () => {
             }),
             expect.any(Function),
         );
+    });
+
+    it('rejects an empty db_name before opening a backend connection', async () => {
+        resetEnv();
+        const withClient = vi.fn();
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn();
+        const guarded = withDbGuard({ toolName: 'find_documents', requiredRole: 'read' }, handler);
+
+        const result = await guarded({ connection_profile: 'dev', db_name: '', collection_name: 'audit_log' });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('Database name must not be empty');
+        expect(withClient).not.toHaveBeenCalled();
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty new_collection_name for rename_collection before connecting', async () => {
+        resetEnv({ ENABLE_MANAGEMENT_TOOLS: 'true' });
+        const withClient = vi.fn();
+        vi.doMock('../../src/context/documentdb', () => ({ withDocumentDBClient: withClient }));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const { withDbGuard } = await import('../../src/tools/utils/dbGuard');
+        const handler = vi.fn();
+        const guarded = withDbGuard({ toolName: 'rename_collection', requiredRole: 'management' }, handler);
+
+        const result = await guarded({
+            connection_profile: 'dev',
+            db_name: 'fleet',
+            collection_name: 'vehicles',
+            new_collection_name: '',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('Collection name must not be empty');
+        expect(withClient).not.toHaveBeenCalled();
+        expect(handler).not.toHaveBeenCalled();
     });
 });
