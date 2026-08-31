@@ -2,8 +2,9 @@
 
 > **Status:** Draft full-feature architecture proposal
 >
-> **Target:** Full cluster lifecycle, including create, update, scale, restore,
-> replica operations, and delete
+> **Target:** Supported cluster lifecycle operations, including create, update,
+> scale, restore, replica operations, and delete; start/stop remain out of
+> scope until supported by a stable API
 >
 > **Validated so far:** Read-only cluster list/get POC
 >
@@ -14,7 +15,7 @@
 >
 > **Target decision date:** TBD
 >
-> **Last updated:** 2026-08-28
+> **Last updated:** 2026-08-30
 
 ## 1. Executive Proposal
 
@@ -69,12 +70,12 @@ individual operations and their evidence.
 | Domain | Target product scope | Conditional or separately approved |
 | --- | --- | --- |
 | Discovery and configuration | List/get clusters, check name availability, and read approved child-resource state | Region and tier catalogs if a stable API contract is identified |
-| Cluster lifecycle | Create; update compute, storage, shard count, high availability, server version, network mode, and tags; delete | Data API, authentication-mode, identity, and customer-managed-key changes |
+| Cluster lifecycle | Create; update compute, storage, shard count, high availability, server version, and network mode; delete | Data API, authentication-mode, identity, and customer-managed-key changes |
 | Networking | Read public access, firewall rules, private-link resources, and private-endpoint connection state; mutate firewall rules and approve/reject endpoint connections | Creation of the `Microsoft.Network/privateEndpoints` resource if a cross-provider workflow is required |
 | Resilience | List and create replicas; promote a replica with high-risk controls | Automated failover decisions and multi-step recovery runbooks |
 | Backup and restore | Read restore eligibility and earliest restore time; create a point-in-time restore | Restore-point enumeration if a stable API is added |
 | Operations | Start supported ARM operations and retrieve status through safe tracking handles | Cancellation where the resource provider supports it |
-| Governance | Tags, impact and cost-direction previews, and Activity Log correlation | Product-specific policy, maintenance-window, and exact-cost rules |
+| Governance | Tag changes with a complete diff and protected-key policy, impact and cost-direction previews, and Activity Log correlation | Product-specific policy, maintenance-window, and exact-cost rules |
 | Access management | None in the baseline | ARM-managed users/roles and administrator rotation after separate security approval |
 | Durable workflows | None by default | Persisted plan/approve/apply, compensating actions, reapplication, drift detection, and runbooks for selected operations |
 
@@ -166,6 +167,12 @@ narrowing.
 
 ### 3.5 Review, packaging, and deployment
 
+`microsoft/mcp` is the Azure MCP Server source and contribution repository.
+`mcp/com.microsoft/azure` is its GitHub MCP Registry publication and discovery
+page, which links to the source repository and released installation options.
+DocumentDB tool code is developed in `microsoft/mcp`, not in the registry
+entry.
+
 Native commands follow the Azure MCP contribution path:
 
 1. DocumentDB and Azure MCP owners agree on the namespace, command contract,
@@ -176,61 +183,50 @@ Native commands follow the Azure MCP contribution path:
 3. DocumentDB reviewers approve service behavior and support ownership. Azure
    MCP maintainers approve the integration and merge. Product and security
    owners approve the capability and controls required by its risk tier.
-4. After merge, Azure MCP's standard pipeline builds the command into the same
-   signed Azure MCP distribution. Users receive it through their normal Azure
-   MCP update path; DocumentDB has no separate native-tool deployment.
+4. After merge, Azure MCP's standard pipeline builds the command into its
+   signed packages and normal registry distribution. Users receive it through
+   their existing Azure MCP installation or update path; DocumentDB has no
+   separate native-tool deployment.
 
 Local and remote Azure MCP deployments expose the same command contract but
-use the identity model in Section 3.4. If a durable orchestration component is
-approved later, DocumentDB must deploy, secure, monitor, and support that
-service separately, and Azure MCP maintainers must approve how it is exposed.
+use the identity model in Section 3.4. Azure MCP currently documents remote
+HTTP hosting as a self-hosted deployment, for example on Azure Container Apps;
+it is not implied by publishing the tool in the registry. If a durable
+orchestration component is approved later, DocumentDB must deploy, secure,
+monitor, and support that service separately, and Azure MCP maintainers must
+approve how it is exposed.
 
 ## 4. POC Evidence
 
-The POC added two native Azure MCP tools:
+The local POC implemented native `documentdb_cluster_list` and
+`documentdb_cluster_get` commands. It proved service-specific routing, typed
+direct ARM reads, subscription and resource-group enumeration, bounded paging,
+and allowlisted responses. Generic ARM and Resource Graph tools can discover
+the same resources, but do not provide the same stable projection or current
+operational fields.
 
-- `documentdb_cluster_list`, backed by typed subscription or resource-group ARM
-  enumeration; and
-- `documentdb_cluster_get`, backed by a current ARM resource GET.
+Azure CLI was used only to demonstrate gaps outside the two POC tools. It is
+not part of the production architecture. Production tools must resolve scope
+and child-resource state through approved Azure MCP and ARM contracts.
 
-It demonstrated MCP and natural-language discovery, Azure MCP identity and
-read-only integration, both enumeration scopes, typed paging with a response
-cap, and allowlisted serialization that excludes credentials, tags, and raw
-private-endpoint payloads.
+### 4.1 Local-to-remote applicability
 
-### 4.1 Generic capability comparison
+A local Azure MCP process still operates on cloud resources. The POC therefore
+validates command and ARM behavior, but not a shared remote deployment.
 
-| Existing capability | POC finding |
-| --- | --- |
-| Resource-group resource list | Returns generic name, ID, type, and location, but requires a known resource group |
-| Generic ARM or Resource Graph query | Can discover clusters, but the caller controls projection and paging behavior |
-| Resource Graph operational fields | `earliestRestoreTime` was stale for four of six compared clusters, sometimes by nearly 24 hours |
-| Native DocumentDB list and get | Provide a stable schema, current direct ARM data, and a server-enforced output allowlist |
+| Area | Local POC evidence | Remote validation still required |
+| --- | --- | --- |
+| Command contract | Routing, validation, SDK calls, paging, errors, and response allowlist | Same contract through HTTP transport and supported remote clients |
+| Azure identity | Selected local user credential and ARM RBAC | Inbound Entra authentication, outbound OBO or hosting identity, and caller attribution |
+| Protocol safety | Local client discovery and elicitation behavior | Remote client elicitation, namespace filtering, and read-only enforcement |
+| Hosting | Single local process | Tenant isolation, network egress, scaling, failover, telemetry, and deployment ownership |
+| Operations | Read-only list/get | Mutations, ETags, idempotency, LRO recovery, and any durable workflow |
 
-The POC does not create new Azure data. It adds a predictable,
-DocumentDB-specific contract over existing ARM data.
-
-### 4.2 POC limits
-
-| Not proven by the POC | Consequence for the proposal |
-| --- | --- |
-| Mutations, ETag-based concurrency, idempotency, or asynchronous operation recovery | Validate the native mutation pattern and identify any orchestration exceptions |
-| Durable approval, journals, compensating actions, plan reapplication, or runbooks | Treat the orchestration component as conditional |
-| Firewall rules, private endpoints, or other child resources | Do not call the current response complete network posture |
-| Production OBO, managed identity, sovereign clouds, telemetry, or support | Keep these as release decisions and gates |
-
-Azure CLI was used only as a POC workaround for scope resolution and
-private-endpoint checking that the two POC tools did not implement. It is not
-part of the proposed production workflow. Production tools must resolve
-required scope and private-endpoint state through approved Azure MCP and ARM
-contracts without requiring shell access.
-
-"Configuration posture" in the POC therefore means a root-resource snapshot,
-not complete health, diagnostics, or child state. MCP-only workflows require
-host tool restrictions; prompt wording cannot prevent shell use. Inspector
-validates the protocol, while an AI host validates natural-language routing.
-Azure MCP exposes tools, not runtime MCP prompt templates; its end-to-end
-prompt file is test data.
+If the product requires a shared cloud-hosted endpoint, run a remote HTTP/OBO
+spike on the supported self-hosting model before claiming cloud readiness.
+Detailed POC recordings, tests, and demo results should be reviewed with the
+owners offline and maintained in the implementation record; this proposal
+retains only decision-relevant conclusions.
 
 ## 5. Capability and Risk Model
 
@@ -240,9 +236,9 @@ operation rather than per server.
 | Tier | Examples | Required controls |
 | --- | --- | --- |
 | Read | List, get, network state, backup state, operation status | ARM read permission, output allowlist, paging limits |
-| Standard mutation | Update tags or a low-impact setting | Explicit desired state, confirmation, ETag where supported, idempotent retry |
+| Standard mutation | No current target operation; retain for future low-impact writes | Explicit desired state, confirmation, ETag where supported, idempotent retry |
 | Cost, disruption, or security-sensitive mutation | Create, scale, restore, change public access, or change a firewall rule | Material impact preview, explicit confirmation, policy checks, stronger RBAC where needed |
-| Destructive or irreversible mutation | Delete or promote | Typed target confirmation, separate-approval decision, no false rollback promise |
+| Destructive or irreversible mutation | Delete or promote | Exact target in preview, explicit confirmation, separate-approval decision, no false rollback promise |
 | Durable workflow | Multi-step change, separate approver, compensation, or reapplication | Persisted plan and journal, identity binding, expiry, drift checks, recovery |
 
 ### 5.1 Same-session preview and confirmation
@@ -263,7 +259,7 @@ An example preview is:
 
 ```text
 Operation: Scale cluster
-Target: /subscriptions/.../resourceGroups/prod/providers/.../orders
+Target: /subscriptions/.../resourceGroups/prod/providers/Microsoft.DocumentDB/mongoClusters/orders-db
 Change: Compute tier M40 -> M60
 Impact: Cost increases; a service transition may occur
 Reversibility: Can request a later scale-down, subject to service constraints
@@ -306,8 +302,11 @@ operation in Appendix A.
 - Azure MCP read-only mode filters and rejects mutation tools.
 - Every tool declares accurate destructive, idempotent, read-only, open-world,
   secret, and local-required metadata.
-- Add cost, region, maintenance-window, protected-tag, or network-range
-  guardrails only when product requirements justify them.
+- Tag mutations show added, changed, and removed keys; merge with current tags
+  by default; preserve approved cost-center, ownership, policy, and automation
+  tags; and honor Azure Policy.
+- Add other cost, region, maintenance-window, or network-range guardrails only
+  when product requirements justify them.
 - No `force` parameter bypasses required confirmation or approval.
 
 ### 6.2 Mutation correctness
@@ -417,9 +416,9 @@ failure, orphaned operations, store recovery, and instance failover.
 
 | Phase | Deliverable | Exit criterion |
 | --- | --- | --- |
-| 0. POC | Native list and get | Complete: live discovery, routing, ARM calls, and safe output demonstrated |
-| 1. Architecture and intake | Approved capability catalog, placement, namespace, identity, owners, and cloud scope | DocumentDB and Azure MCP owners approve the full-feature direction |
-| 2. Read foundation | Production list/get plus approved network, backup, replica, and operation reads | Safe contracts, RBAC, paging, errors, telemetry, and release checks pass |
+| 0. POC | Native list and get | Technical evidence complete; detailed results become a Phase 1 owner-review input |
+| 1. Architecture and intake | Approved capability catalog, placement, namespace, identity, deployment mode, owners, and cloud scope | DocumentDB and Azure MCP owners approve the source, registry, hosting, and full-feature direction |
+| 2. Read foundation | Production list/get plus approved network, backup, replica, and operation reads | Safe contracts, RBAC, paging, errors, telemetry, and release checks pass; remote HTTP/OBO spike passes if shared hosting is in scope |
 | 3. Standard mutations | One-resource create, update, scale, network, and lifecycle operations | Preview, confirmation, concurrency, idempotency, LRO, cost, and disruption behavior pass |
 | 4. Durable workflows | Only approved workflows needing persistent plans, journals, compensation, reapplication, or runbooks | Multi-user recovery, drift, replay, and audit requirements pass |
 | 5. Release | Supported Azure MCP distribution | Tools are discoverable, documented, owned, monitored, and supportable |
@@ -432,7 +431,8 @@ incremental without redefining the full-feature architecture as an MVP.
 The POC passed unit, live ARM, local record/playback, build, metadata, routing,
 and output-safety checks. Recording publication awaits
 `Azure/azure-sdk-assets` permission. Tool-description evaluation, intake,
-production telemetry, mutations, and non-public clouds remain release work.
+owner review of the detailed POC results, remote HTTP/OBO validation,
+production telemetry, mutations, and non-public clouds remain planned work.
 
 ### 9.2 Full-feature acceptance
 
@@ -467,6 +467,7 @@ The full feature is complete when all applicable items are checked:
 | Automation identity | Managed identity only for approved service execution | Security and service owners |
 | Credential-returning tools | Excluded unless separately approved | Product and security owners |
 | Initial cloud | Azure Public; expand only with evidence | Product owner |
+| Deployment mode | Standard Azure MCP package/registry distribution; require a separate owner and remote spike for shared self-hosting | Product, security, and Azure MCP owners |
 | Full capability catalog | Approve Appendix A statuses and sequence | Product and control-plane owners |
 | Monitoring integration | Reuse existing Azure Monitor MCP tools; do not duplicate generic queries | DocumentDB and Azure Monitor owners |
 | Azure MCP acceptance | Complete intake and obtain maintainer approval for each contribution | Azure MCP maintainers |
@@ -501,36 +502,34 @@ illustrative until Azure MCP intake approves the command taxonomy.
 | Cluster | `cluster list` | Subscription or resource-group collection GET | Read | None beyond ARM RBAC | Validated |
 | Cluster | `cluster get` | Resource GET | Read | None beyond ARM RBAC | Validated |
 | Cluster | `cluster name-availability check` | Location-scoped check-name action | Read | None beyond ARM RBAC | Target |
-| Cluster | `cluster create` | Create-or-update PUT LRO | Cost-sensitive mutation | Same-session preview and confirmation; use out-of-band administrator secret input when required | Target |
-| Restore | `cluster restore` | Create-or-update PUT with point-in-time restore mode | High-risk mutation | Same-session confirmation; decide whether separate approval is required | Target |
-| Replica | `replica create` | Create-or-update PUT with replica create mode | Mutation | Same-session preview and confirmation | Target |
-| Cluster | `cluster scale` | PATCH compute tier, storage size, or shard count | Mutation | Same-session preview and confirmation | Target |
-| Cluster | `cluster update` | PATCH high availability, server version, or tags | Mutation | Same-session preview and confirmation | Target |
-| Network | `network update` | PATCH public access or network bypass | Security-sensitive mutation | Detailed network-impact preview and confirmation | Target |
-| Cluster | `cluster delete` | Resource DELETE LRO | Destructive | Typed target confirmation; decide whether separate approval is required | Target |
+| Cluster | `cluster create` | Create-or-update PUT LRO | Cost, disruption, or security-sensitive mutation | Same-session preview and confirmation; use out-of-band administrator secret input when required | Target |
+| Restore | `cluster restore` | Create-or-update PUT with point-in-time restore mode | Cost, disruption, or security-sensitive mutation | Same-session confirmation; decide whether separate approval is required | Target |
+| Replica | `replica create` | Create-or-update PUT with replica create mode | Cost, disruption, or security-sensitive mutation | Same-session preview and confirmation | Target |
+| Cluster | `cluster scale` | PATCH compute tier, storage size, or shard count | Cost, disruption, or security-sensitive mutation | Same-session preview and confirmation | Target |
+| Cluster | `cluster update` | PATCH high availability or server version | Cost, disruption, or security-sensitive mutation | Same-session preview and confirmation | Target |
+| Governance | `tags update` | Cluster PATCH tags | Cost, disruption, or security-sensitive mutation | Complete tag diff, protected-key policy, and confirmation | Target |
+| Network | `network update` | PATCH public access or network bypass | Cost, disruption, or security-sensitive mutation | Detailed network-impact preview and confirmation | Target |
+| Cluster | `cluster delete` | Resource DELETE LRO | Destructive or irreversible mutation | Detailed target and impact preview; decide whether separate approval is required | Target |
 | Replica | `replica list` | Replica collection GET | Read | None beyond ARM RBAC | Target |
-| Replica | `replica promote` | Promote POST LRO | Destructive or irreversible | Detailed impact preview; decide whether separate approval is required | Target |
+| Replica | `replica promote` | Promote POST LRO | Destructive or irreversible mutation | Detailed impact preview; decide whether separate approval is required | Target |
 | Firewall | `firewall-rule list/get` | Child-resource GET | Read | None beyond ARM RBAC | Target |
-| Firewall | `firewall-rule create/update/delete` | Child-resource PUT or DELETE LRO | Security-sensitive mutation | Detailed network-impact preview and confirmation | Target |
+| Firewall | `firewall-rule create/update/delete` | Child-resource PUT or DELETE LRO | Cost, disruption, or security-sensitive mutation | Detailed network-impact preview and confirmation | Target |
 | Private link | `private-link-resource list` | Private-link-resource GET | Read | None beyond ARM RBAC | Target |
 | Private endpoint | `private-endpoint-connection list/get` | Connection child-resource GET | Read | None beyond ARM RBAC | Target |
-| Private endpoint | `private-endpoint-connection approve/reject/delete` | Connection PUT or DELETE LRO | Security or disruption-sensitive mutation | Detailed connectivity-impact preview and confirmation | Target |
+| Private endpoint | `private-endpoint-connection approve/reject/delete` | Connection PUT or DELETE LRO | Cost, disruption, or security-sensitive mutation | Detailed connectivity-impact preview and confirmation | Target |
 | Operation | `operation get` | Validated polling state plus current resource GET | Read | ARM RBAC plus tracking-handle scope validation | Target |
-| Access | `user list/get` | ARM user child-resource GET | Security-sensitive read | Separate security and product decision | Candidate |
-| Access | `user create/update/delete` | ARM user child-resource PUT or DELETE LRO | Security-sensitive mutation | Separate security approval and detailed preview | Candidate |
-| Cluster security | Update authentication mode, managed identity, Data API, or customer-managed key | Cluster PATCH LRO | Security-sensitive mutation | Separate security and product decision | Candidate |
-| Administrator | Rotate local administrator secret | Cluster PATCH LRO with out-of-band secret input | Secret-handling mutation | Separate security approval and elicitation | Candidate |
+| Access | `user list/get` | ARM user child-resource GET | Read | Separate security and product decision | Candidate |
+| Access | `user create/update/delete` | ARM user child-resource PUT or DELETE LRO | Cost, disruption, or security-sensitive mutation | Separate security approval and detailed preview | Candidate |
+| Cluster security | Update authentication mode, managed identity, Data API, or customer-managed key | Cluster PATCH LRO | Cost, disruption, or security-sensitive mutation | Separate security and product decision | Candidate |
+| Administrator | Rotate local administrator secret | Cluster PATCH LRO with out-of-band secret input | Cost, disruption, or security-sensitive mutation | Separate security approval and elicitation | Candidate |
 | Catalog | List available regions or tiers | No stable `2026-06-01` SDK operation identified | Read | None after an authoritative API exists | Candidate |
-| Network | Create the `Microsoft.Network/privateEndpoints` resource | Cross-provider Microsoft.Network operation | Mutation | Decide whether generic Azure MCP or orchestration owns it | Candidate |
-| Operation | Cancel an in-progress operation | No current MongoCluster cancel operation identified | Mutation | Define only if the resource provider supports cancellation | Candidate |
-| Secret | Get connection strings | List-connection-strings action | Secret read | Not applicable | Excluded |
-
-Typed target confirmation means the user must enter the exact resource name
-rather than approve a generic warning.
+| Network | Create the `Microsoft.Network/privateEndpoints` resource | Cross-provider Microsoft.Network operation | Cost, disruption, or security-sensitive mutation | Decide whether generic Azure MCP or orchestration owns it | Candidate |
+| Operation | Cancel an in-progress operation | No current MongoCluster cancel operation identified | Cost, disruption, or security-sensitive mutation | Define only if the resource provider supports cancellation | Candidate |
+| Secret | Get connection strings | List-connection-strings action | Read | Not applicable | Excluded |
 
 The stable SDK does not currently expose cluster start/stop, restore-point
 enumeration, or operation cancellation. These are not implied by the
-full-lifecycle target and require new API evidence before entering scope.
+supported-lifecycle target and require new API evidence before entering scope.
 
 ## Appendix B. Azure Monitor MCP Relationship
 
@@ -580,6 +579,8 @@ toolset; generic telemetry queries remain in Azure Monitor.
 
 - [Azure MCP tools and security model](https://learn.microsoft.com/azure/developer/azure-mcp-server/tools/)
 - [Azure MCP setup and distribution](https://github.com/microsoft/mcp/blob/main/servers/Azure.Mcp.Server/README.md)
+- [Azure MCP Registry publication](https://github.com/mcp/com.microsoft/azure)
+- [Azure MCP remote hosting templates](https://github.com/microsoft/mcp/blob/main/servers/Azure.Mcp.Server/azd-templates/README.md)
 - [Azure MCP contribution guide](https://github.com/microsoft/mcp/blob/main/CONTRIBUTING.md)
 - [Azure MCP authentication model](https://github.com/microsoft/mcp/blob/main/docs/Authentication.md)
 - [Azure Monitor and Workbooks MCP tools](https://learn.microsoft.com/azure/developer/azure-mcp-server/tools/azure-monitor)
