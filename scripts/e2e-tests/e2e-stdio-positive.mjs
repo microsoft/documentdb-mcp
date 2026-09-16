@@ -2,7 +2,7 @@
 // E2E positive driver: spawns dist/main.js over stdio against the local DocumentDB container
 // and asserts that the *allow* paths actually return data through the gates.
 //
-// Covers e2e-testing-guide.md:
+// Covers e2e-tests/e2e-testing-guide.md:
 //   Section 7b.2  database allowlist allow
 //   Section 7b.5  list_databases top-level filtering
 //   Section 7b.6  list_databases per-db filtering

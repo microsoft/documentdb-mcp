@@ -152,9 +152,9 @@ Reference launcher config (works for VS Code and Claude Desktop):
 {
     "mcpServers": {
         "documentdb": {
-            "command": "/home/rhossain/.nvm/versions/node/v23.6.1/bin/node",
-            "args": ["/home/rhossain/wsl_workspace/code2026/documentdb-mcp/dist/main.js"],
-            "cwd": "/home/rhossain/wsl_workspace/code2026/documentdb-mcp"
+            "command": "/absolute/path/to/node",
+            "args": ["/absolute/path/to/documentdb-mcp/dist/main.js"],
+            "cwd": "/absolute/path/to/documentdb-mcp"
         }
     }
 }
@@ -303,7 +303,7 @@ If any of the above does not behave as expected, the per-profile capability gate
 
 ## 7d. Fine-Grained Data Exposure Controls Verification
 
-These checks cover the controls implemented under [release-readiness-check.md](./release-readiness-check.md) §4a: pipeline namespace enforcement and denied database/collection blocklists. Each check restarts the server with the JSON shown, then exercises the named tool. Restore the default profile JSON between checks.
+These checks cover the controls implemented under [release-readiness-check.md](../release-readiness-check.md) §4a: pipeline namespace enforcement and denied database/collection blocklists. Each check restarts the server with the JSON shown, then exercises the named tool. Restore the default profile JSON between checks.
 
 1. **Denied database wins over allowlist.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowedDatabases":["fleet","secrets"],"deniedDatabases":["secrets"]}}'`. Call `find_documents` with `db_name="secrets"`. Expect `isError: true` with `Database 'secrets' is denied for connection profile 'dev'.`. Then call `find_documents` with `db_name="fleet"` and expect normal success.
 2. **Denied collection wins over allowlist.** Use `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write","management"],"allowedCollections":{"fleet":["vehicles","audit_log"]},"deniedCollections":{"fleet":["audit_log"]}}}'`. Call `find_documents` on `fleet.audit_log`. Expect `isError: true` with `Collection 'fleet.audit_log' is denied`. Then call `find_documents` on `fleet.vehicles` and expect normal success.
@@ -317,7 +317,7 @@ If any of the above does not behave as expected, the §4a controls are not wired
 
 ## 7e. Full-Collection Operation Protection Verification
 
-These checks cover [release-readiness-check.md](./release-readiness-check.md) §5: `update_documents` and `delete_documents` reject `multi=true` with an empty filter unless `confirm_full_collection_operation=true`. Use a profile that grants `write` (and `read` so you can observe state), e.g. `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write"]}}'`.
+These checks cover [release-readiness-check.md](../release-readiness-check.md) §5: `update_documents` and `delete_documents` reject `multi=true` with an empty filter unless `confirm_full_collection_operation=true`. Use a profile that grants `write` (and `read` so you can observe state), e.g. `'{"dev":{"uri":"mongodb://...","allowedRoles":["read","write"]}}'`.
 
 1. **Delete with multi+empty filter is rejected.** Call `delete_documents` with `db_name="fleet"`, `collection_name="vehicles"`, `filter={}`, `multi=true`, and **no** `confirm_full_collection_operation`. Expect `isError: true` with `delete_documents with multi=true and an empty filter targets every document in the collection. Set confirm_full_collection_operation=true to proceed, or narrow the filter.`. Verify the collection count is unchanged.
 2. **Update with multi+empty filter is rejected.** Call `update_documents` with `db_name="fleet"`, `collection_name="vehicles"`, `filter={}`, `update={"$set":{"touched":true}}`, `multi=true`, and **no** confirm flag. Expect `isError: true` with the same shape of message but `update_documents` as the prefix. Verify no documents were modified.

@@ -48,7 +48,7 @@ Tests:
 - [test/tools/limits.test.ts](../test/tools/limits.test.ts) — helper-level positive/negative coverage (17 tests)
 - [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — wiring tests proving each tool actually clamps / rejects / carries `maxTimeMS` (7 new tests)
 
-Manual verification steps are in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
+Manual verification steps are in [docs/e2e-testing-guide.md](./e2e-tests/e2e-testing-guide.md).
 
 ### 3. Per-Profile Database And Collection Restrictions — DONE
 
@@ -105,7 +105,7 @@ Tests:
 - [test/security/connectionProfiles.test.ts](../test/security/connectionProfiles.test.ts) — 9 new helper-level tests covering allow/deny matrix for db and collection allowlists, empty-array semantics, and `getProfileScope`
 - [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — 8 new wiring tests proving each enforcement point: db-out-of-scope deny, collection-out-of-scope deny, allowed pass-through, `rename_collection` target check, `list_databases` filtering (both branches), and unchanged behavior when no allowlist is configured
 
-Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
+Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-tests/e2e-testing-guide.md).
 
 ### 4. Per-Profile Role And Capability Restrictions — DONE
 
@@ -161,7 +161,7 @@ Tests:
 - [test/security/connectionProfiles.test.ts](../test/security/connectionProfiles.test.ts) — helper-level tests covering: omitted `allowedRoles` → read-only deny matrix, `[]` → explicit deny-all (even read), allow/deny by tier, and unknown-profile no-op
 - [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — wiring tests covering: write-denied-by-`allowedRoles`, management-denied-by-`allowedRoles`, read-still-allowed pass-through, read-only-default when `allowedRoles` is omitted, and `allowedRoles: []` denies even read tools
 
-Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
+Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-tests/e2e-testing-guide.md).
 
 ### 4a. Fine-Grained Data Exposure Controls — DONE (initial cut)
 
@@ -243,7 +243,7 @@ Tests:
 - [test/tools/fullCollectionGuard.test.ts](../test/tools/fullCollectionGuard.test.ts) — 7 helper-level tests covering deny / allow with confirm / non-empty filter / multi=false / non-`true` confirm values
 - [test/tools/registeredTools.test.ts](../test/tools/registeredTools.test.ts) — 5 wiring tests covering `delete_documents` and `update_documents` deny + allow paths
 
-Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-testing-guide.md).
+Manual verification steps live in [docs/e2e-testing-guide.md](./e2e-tests/e2e-testing-guide.md).
 
 ### 6. Startup Configuration Validation — DONE
 
