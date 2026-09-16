@@ -16,11 +16,12 @@ import { getRequestPrincipal, requireHttpAuthentication } from './security/auth'
 import { createRateLimitMiddleware } from './security/rateLimit';
 import { runWithRequestContext } from './security/requestContext';
 import { registerAllTools } from './tools';
+import { SERVER_NAME, SERVER_VERSION } from './version';
 
 export function createServer(): McpServer {
     const server = new McpServer({
-        name: 'documentdb-mcp-server',
-        version: '0.1.0',
+        name: SERVER_NAME,
+        version: SERVER_VERSION,
     });
 
     // All MCP tools live in `src/tools` as declarative `ToolDefinition` entries.

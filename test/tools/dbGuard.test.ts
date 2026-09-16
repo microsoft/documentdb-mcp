@@ -72,6 +72,7 @@ describe('withDbGuard', () => {
             {
                 kind: 'connectionString',
                 uri: 'mongodb://localhost:27017',
+                appName: 'documentdb-mcp-server/0.1.0 tool/insert_documents',
             },
             expect.any(Function),
         );
@@ -198,6 +199,7 @@ describe('withDbGuard', () => {
                 kind: 'entra',
                 uri: 'mongodb+srv://cluster.global.mongocluster.cosmos.azure.com/?tls=true',
                 tokenScope: 'https://example.azure.com/.default',
+                appName: 'documentdb-mcp-server/0.1.0 tool/find_documents',
             }),
             expect.any(Function),
         );
