@@ -58,6 +58,21 @@ function validateRateLimit(config: MCPConfig, errors: string[]): void {
 
 function validateAuth(config: MCPConfig, errors: string[]): void {
     if (!config.auth.required) return;
+    // stdio with TRUST_LOCAL_STDIO=true never traverses the Entra layer at
+    // runtime (see `runStdioServer` in src/server.ts: it gates on the same
+    // pair of flags before any Entra middleware is touched), so refusing to
+    // start because ENTRA_TENANT_ID / ENTRA_AUDIENCE are missing is a false
+    // positive. Without this short-circuit, the README's "Install in VS Code"
+    // badge — which sets `TRANSPORT=stdio` and `TRUST_LOCAL_STDIO=true` but
+    // leaves `AUTH_REQUIRED` at its default `true` — exits at startup with
+    // "AUTH_REQUIRED=true requires ENTRA_TENANT_ID to be set." even though
+    // the stdio transport would have happily skipped Entra at runtime.
+    //
+    // HTTP / SSE transports still demand the Entra config: `trustLocalStdio`
+    // is, by definition, a stdio-only escape hatch, and the `streamable-http`
+    // and `sse` paths in src/server.ts unconditionally require the Entra
+    // middleware.
+    if (config.transport === 'stdio' && config.trustLocalStdio) return;
     if (!config.auth.tenantId) {
         errors.push('AUTH_REQUIRED=true requires ENTRA_TENANT_ID to be set.');
     }
@@ -91,7 +106,8 @@ function validateProfile(name: string, profile: ConnectionProfileConfig, errors:
     }
 
     const authModeIsMissing = profile.authMode === undefined;
-    const authModeIsInvalid = !authModeIsMissing && profile.authMode !== 'entra' && profile.authMode !== 'connectionString';
+    const authModeIsInvalid =
+        !authModeIsMissing && profile.authMode !== 'entra' && profile.authMode !== 'connectionString';
     if (authModeIsMissing) {
         errors.push(`Connection profile '${name}' must define authMode='entra' or authMode='connectionString'.`);
     }
